@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
   AlertTriangle,
   BarChart3,
-  Brain,
   Calendar,
   Camera,
   CheckCircle2,
@@ -13,6 +11,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Filter,
   RefreshCw,
   ShieldCheck,
   TrendingUp,
@@ -37,6 +36,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import {
   Table,
   TableBody,
@@ -61,6 +62,8 @@ const tooltipStyle = {
   color: CHART_TEXT,
 };
 
+type ReportType = "all" | "people" | "objects" | "incidents" | "forecast";
+
 type CameraData = {
   camera_id: string;
   site?: string;
@@ -77,6 +80,8 @@ type CameraData = {
   objects?: number;
   standing?: number;
   sitting?: number;
+  created_at?: string;
+  timestamp?: string;
 };
 
 type IncidentData = {
@@ -115,6 +120,9 @@ type SummaryData = {
     phones?: number;
     vehicles?: number;
     objects?: number;
+    camera_id?: string;
+    created_at?: string;
+    timestamp?: string;
   }>;
 };
 
@@ -135,8 +143,32 @@ function formatPercent(value: unknown) {
   return `${numberValue(value).toFixed(0)}%`;
 }
 
-function downloadFile(path: string) {
-  window.open(`${API}${path}`, "_blank");
+function getDateValue(item: { created_at?: string; timestamp?: string }) {
+  return item.created_at || item.timestamp || "";
+}
+
+function isInsideDateRange(
+  value: string,
+  startDate: string,
+  endDate: string
+) {
+  if (!startDate && !endDate) return true;
+  if (!value) return true;
+
+  const itemDate = new Date(value);
+  if (Number.isNaN(itemDate.getTime())) return true;
+
+  if (startDate) {
+    const start = new Date(`${startDate}T00:00:00`);
+    if (itemDate < start) return false;
+  }
+
+  if (endDate) {
+    const end = new Date(`${endDate}T23:59:59`);
+    if (itemDate > end) return false;
+  }
+
+  return true;
 }
 
 function riskBadge(value: number) {
@@ -165,9 +197,30 @@ function toneClasses(tone: ReportCardData["tone"]) {
   return "border-blue-500/25 bg-blue-500/10 text-blue-500";
 }
 
-function buildTrend(summary: SummaryData | null, cameras: CameraData[]) {
-  if (Array.isArray(summary?.trend) && summary.trend.length > 0) {
-    return summary.trend.slice(-12).map((item) => ({
+function buildTrend(
+  summary: SummaryData | null,
+  cameras: CameraData[],
+  selectedCamera: string,
+  startDate: string,
+  endDate: string
+) {
+  const sourceTrend = Array.isArray(summary?.trend) ? summary.trend : [];
+
+  const filteredTrend = sourceTrend.filter((item) => {
+    const matchesCamera =
+      selectedCamera === "all" || item.camera_id === selectedCamera;
+
+    const matchesDate = isInsideDateRange(
+      getDateValue(item),
+      startDate,
+      endDate
+    );
+
+    return matchesCamera && matchesDate;
+  });
+
+  if (filteredTrend.length > 0) {
+    return filteredTrend.slice(-12).map((item) => ({
       time: item.time,
       people: numberValue(item.active || item.people),
       risk: numberValue(item.risk),
@@ -204,6 +257,11 @@ export default function Reports() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [cameras, setCameras] = useState<CameraData[]>([]);
   const [incidents, setIncidents] = useState<IncidentData[]>([]);
+  const [selectedCamera, setSelectedCamera] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [reportType, setReportType] = useState<ReportType>("all");
+  const [filterApplied, setFilterApplied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -268,63 +326,153 @@ export default function Reports() {
     return () => window.clearInterval(timer);
   }, [loadData]);
 
-  const kpis = summary?.kpis || {};
+  function buildReportQuery() {
+    const params = new URLSearchParams();
 
-  const onlineCameras = cameras.filter((camera) => camera.running).length;
-  const offlineCameras = Math.max(0, cameras.length - onlineCameras);
+    if (selectedCamera !== "all") {
+      params.set("camera_id", selectedCamera);
+    }
+
+    if (startDate) {
+      params.set("start_date", startDate);
+    }
+
+    if (endDate) {
+      params.set("end_date", endDate);
+    }
+
+    if (reportType !== "all") {
+      params.set("type", reportType);
+    }
+
+    const query = params.toString();
+    return query ? `?${query}` : "";
+  }
+
+  function downloadFile(path: string) {
+    window.open(`${API}${path}${buildReportQuery()}`, "_blank");
+  }
+
+  function applyCustomFilter() {
+    setFilterApplied(true);
+    loadData(false);
+  }
+
+  function resetCustomFilter() {
+    setSelectedCamera("all");
+    setStartDate("");
+    setEndDate("");
+    setReportType("all");
+    setFilterApplied(false);
+  }
+
+  const filteredCameras = useMemo(() => {
+    return cameras.filter((camera) => {
+      const matchesCamera =
+        selectedCamera === "all" || camera.camera_id === selectedCamera;
+
+      const matchesDate = isInsideDateRange(
+        getDateValue(camera),
+        startDate,
+        endDate
+      );
+
+      return matchesCamera && matchesDate;
+    });
+  }, [cameras, selectedCamera, startDate, endDate]);
+
+  const filteredIncidents = useMemo(() => {
+    return incidents.filter((incident) => {
+      const matchesCamera =
+        selectedCamera === "all" || incident.camera_id === selectedCamera;
+
+      const matchesDate = isInsideDateRange(
+        getDateValue(incident),
+        startDate,
+        endDate
+      );
+
+      return matchesCamera && matchesDate;
+    });
+  }, [incidents, selectedCamera, startDate, endDate]);
+
+  const kpis = summary?.kpis || {};
+  const activeCameraList = filterApplied ? filteredCameras : cameras;
+  const activeIncidentList = filterApplied ? filteredIncidents : incidents;
+
+  const onlineCameras = activeCameraList.filter((camera) => camera.running).length;
+  const offlineCameras = Math.max(0, activeCameraList.length - onlineCameras);
 
   const totalPeople =
-    cameras.reduce((sum, camera) => sum + numberValue(camera.active_people), 0) ||
-    numberValue(kpis.active_people);
+    activeCameraList.reduce(
+      (sum, camera) => sum + numberValue(camera.active_people),
+      0
+    ) || numberValue(kpis.active_people);
 
   const totalUnique =
-    cameras.reduce((sum, camera) => sum + numberValue(camera.total_unique), 0) ||
-    numberValue(kpis.total_unique);
+    activeCameraList.reduce(
+      (sum, camera) => sum + numberValue(camera.total_unique),
+      0
+    ) || numberValue(kpis.total_unique);
 
   const avgRisk =
-    cameras.length > 0
-      ? cameras.reduce((sum, camera) => sum + numberValue(camera.risk_score), 0) /
-        cameras.length
+    activeCameraList.length > 0
+      ? activeCameraList.reduce(
+          (sum, camera) => sum + numberValue(camera.risk_score),
+          0
+        ) / activeCameraList.length
       : numberValue(kpis.risk_score);
 
   const avgQuality =
-    cameras.length > 0
-      ? cameras.reduce((sum, camera) => sum + numberValue(camera.quality), 0) /
-        cameras.length
+    activeCameraList.length > 0
+      ? activeCameraList.reduce(
+          (sum, camera) => sum + numberValue(camera.quality),
+          0
+        ) / activeCameraList.length
       : numberValue(kpis.quality);
 
   const avgFps =
-    cameras.length > 0
-      ? cameras.reduce((sum, camera) => sum + numberValue(camera.fps), 0) /
-        cameras.length
+    activeCameraList.length > 0
+      ? activeCameraList.reduce(
+          (sum, camera) => sum + numberValue(camera.fps),
+          0
+        ) / activeCameraList.length
       : numberValue(kpis.fps);
 
-  const highIncidents = incidents.filter((incident) =>
+  const highIncidents = activeIncidentList.filter((incident) =>
     ["HIGH", "CRITICAL"].includes(String(incident.severity || "").toUpperCase())
   ).length;
 
-  const mediumIncidents = incidents.filter(
+  const mediumIncidents = activeIncidentList.filter(
     (incident) => String(incident.severity || "").toUpperCase() === "MEDIUM"
   ).length;
 
   const lowIncidents = Math.max(
     0,
-    incidents.length - highIncidents - mediumIncidents
+    activeIncidentList.length - highIncidents - mediumIncidents
   );
 
   const objectTotals = {
     laptops:
-      cameras.reduce((sum, camera) => sum + numberValue(camera.laptops), 0) ||
-      numberValue(kpis.laptops),
+      activeCameraList.reduce(
+        (sum, camera) => sum + numberValue(camera.laptops),
+        0
+      ) || numberValue(kpis.laptops),
     phones:
-      cameras.reduce((sum, camera) => sum + numberValue(camera.phones), 0) ||
-      numberValue(kpis.phones),
+      activeCameraList.reduce(
+        (sum, camera) => sum + numberValue(camera.phones),
+        0
+      ) || numberValue(kpis.phones),
     vehicles:
-      cameras.reduce((sum, camera) => sum + numberValue(camera.vehicles), 0) ||
-      numberValue(kpis.vehicles),
+      activeCameraList.reduce(
+        (sum, camera) => sum + numberValue(camera.vehicles),
+        0
+      ) || numberValue(kpis.vehicles),
     other:
-      cameras.reduce((sum, camera) => sum + numberValue(camera.objects), 0) ||
-      numberValue(kpis.objects),
+      activeCameraList.reduce(
+        (sum, camera) => sum + numberValue(camera.objects),
+        0
+      ) || numberValue(kpis.objects),
   };
 
   const totalObjects =
@@ -334,20 +482,30 @@ export default function Reports() {
     objectTotals.other;
 
   const highestRiskCamera =
-    cameras.length > 0
-      ? [...cameras].sort(
+    activeCameraList.length > 0
+      ? [...activeCameraList].sort(
           (a, b) => numberValue(b.risk_score) - numberValue(a.risk_score)
         )[0]
       : null;
 
   const busiestCamera =
-    cameras.length > 0
-      ? [...cameras].sort(
+    activeCameraList.length > 0
+      ? [...activeCameraList].sort(
           (a, b) => numberValue(b.active_people) - numberValue(a.active_people)
         )[0]
       : null;
 
-  const trendData = useMemo(() => buildTrend(summary, cameras), [summary, cameras]);
+  const trendData = useMemo(
+    () =>
+      buildTrend(
+        summary,
+        activeCameraList,
+        selectedCamera,
+        startDate,
+        endDate
+      ),
+    [summary, activeCameraList, selectedCamera, startDate, endDate]
+  );
 
   const objectData = [
     { name: "Laptops", value: objectTotals.laptops },
@@ -362,7 +520,7 @@ export default function Reports() {
     { name: "Low", value: lowIncidents },
   ].filter((item) => item.value > 0);
 
-  const cameraPerformance = cameras
+  const cameraPerformance = activeCameraList
     .map((camera) => ({
       name: camera.site || camera.camera_id,
       people: numberValue(camera.active_people),
@@ -375,8 +533,8 @@ export default function Reports() {
 
   const reportCards: ReportCardData[] = [
     {
-      title: "Full BI Excel Report",
-      description: "Analytics, camera performance and KPI evidence in spreadsheet format.",
+      title: "Filtered BI Excel Report",
+      description: "Custom camera, date range and report type filter bilan Excel export.",
       endpoint: "/api/reports/analytics/excel",
       icon: FileSpreadsheet,
       format: "XLSX",
@@ -392,7 +550,7 @@ export default function Reports() {
     },
     {
       title: "Analytics CSV Export",
-      description: "Raw crowd analytics data for Power BI or external analysis.",
+      description: "Raw filtered analytics data for Power BI or external analysis.",
       endpoint: "/api/reports/analytics/csv",
       icon: Database,
       format: "CSV",
@@ -400,7 +558,7 @@ export default function Reports() {
     },
     {
       title: "Incidents Excel Report",
-      description: "Security incidents, severity levels and camera alert history.",
+      description: "Camera and date filtered incident evidence export.",
       endpoint: "/api/reports/incidents/excel",
       icon: AlertTriangle,
       format: "XLSX",
@@ -408,7 +566,7 @@ export default function Reports() {
     },
     {
       title: "Incidents CSV Export",
-      description: "Lightweight anomaly and incident export for quick review.",
+      description: "Lightweight incident export for filtered review.",
       endpoint: "/api/reports/incidents/csv",
       icon: ShieldCheck,
       format: "CSV",
@@ -416,7 +574,7 @@ export default function Reports() {
     },
     {
       title: "Forecast Report",
-      description: "Predictive analytics report with future crowd and risk planning.",
+      description: "Predictive analytics report with filtered planning context.",
       endpoint: "/api/reports/forecast/excel",
       icon: TrendingUp,
       format: "AI",
@@ -431,6 +589,15 @@ export default function Reports() {
         text: "API endpointlaridan biri javob bermayapti. Export tugmalari ishlashi uchun backend report route’larini tekshirish kerak.",
         badge: "API WARNING",
         badgeClass: "bg-yellow-500 text-black",
+      };
+    }
+
+    if (filterApplied) {
+      return {
+        title: "Custom report filter applied",
+        text: "Hisobot ma’lumotlari tanlangan kamera, date range va report type bo‘yicha ko‘rsatilmoqda. Export tugmalari ham shu filter bilan ishlaydi.",
+        badge: "FILTERED",
+        badgeClass: "bg-blue-500 text-white",
       };
     }
 
@@ -458,7 +625,13 @@ export default function Reports() {
       badge: "READY",
       badgeClass: "bg-green-500 text-white",
     };
-  }, [error, highIncidents, avgRisk, offlineCameras]);
+  }, [error, filterApplied, highIncidents, avgRisk, offlineCameras]);
+
+  const showPeopleSections = reportType === "all" || reportType === "people";
+  const showObjectSections = reportType === "all" || reportType === "objects";
+  const showIncidentSections =
+    reportType === "all" || reportType === "incidents";
+  const showForecastSections = reportType === "all" || reportType === "forecast";
 
   return (
     <div className="space-y-6 text-foreground">
@@ -471,7 +644,7 @@ export default function Reports() {
 
             <Badge className="bg-blue-500 text-white">
               <FileText className="size-3.5 mr-1" />
-              Executive Exports
+              Custom Reports
             </Badge>
 
             <Badge variant="outline" className="text-foreground">
@@ -481,8 +654,8 @@ export default function Reports() {
           </div>
 
           <p className="text-muted-foreground max-w-4xl">
-            Generate management reports, analytics exports, incident evidence,
-            camera performance summaries and forecast documents.
+            Generate custom reports by camera, date range and report type.
+            Export filtered analytics, incidents, objects and forecast data.
           </p>
         </div>
 
@@ -496,7 +669,7 @@ export default function Reports() {
 
           <Button onClick={() => downloadFile("/api/reports/analytics/excel")}>
             <Download className="size-4 mr-2" />
-            Generate Full BI Report
+            Export Filtered Excel
           </Button>
         </div>
       </div>
@@ -513,10 +686,96 @@ export default function Reports() {
         </Card>
       )}
 
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <Filter className="size-5 text-blue-500" />
+            Custom Report Filter
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+            <div className="space-y-2">
+              <Label>Camera</Label>
+              <select
+                value={selectedCamera}
+                onChange={(event) => setSelectedCamera(event.target.value)}
+                className="w-full h-11 rounded-xl border border-border bg-background px-3 text-foreground outline-none"
+              >
+                <option value="all">All Cameras</option>
+                {cameras.map((camera) => (
+                  <option key={camera.camera_id} value={camera.camera_id}>
+                    {camera.site || camera.camera_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Start Date</Label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>End Date</Label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Report Type</Label>
+              <select
+                value={reportType}
+                onChange={(event) =>
+                  setReportType(event.target.value as ReportType)
+                }
+                className="w-full h-11 rounded-xl border border-border bg-background px-3 text-foreground outline-none"
+              >
+                <option value="all">All Data</option>
+                <option value="people">People Analytics</option>
+                <option value="objects">Object Detection</option>
+                <option value="incidents">Incidents</option>
+                <option value="forecast">Forecast</option>
+              </select>
+            </div>
+
+            <div className="flex items-end gap-2">
+              <Button className="flex-1" onClick={applyCustomFilter}>
+                Apply
+              </Button>
+
+              <Button variant="outline" onClick={resetCustomFilter}>
+                Reset
+              </Button>
+            </div>
+          </div>
+
+          {filterApplied && (
+            <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-500/10 p-4">
+              <p className="text-sm font-semibold text-foreground">
+                Active Filter
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Camera: {selectedCamera} • Start: {startDate || "Any"} • End:{" "}
+                {endDate || "Any"} • Type: {reportType}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <KpiCard
           icon={Users}
-          title="Active People"
+          title="Filtered People"
           value={totalPeople}
           hint={`${totalUnique} unique people`}
           className="border-blue-500/30 bg-blue-500/10"
@@ -526,8 +785,8 @@ export default function Reports() {
 
         <KpiCard
           icon={Camera}
-          title="Camera Coverage"
-          value={`${onlineCameras}/${cameras.length}`}
+          title="Filtered Cameras"
+          value={`${onlineCameras}/${activeCameraList.length}`}
           hint={`${offlineCameras} offline`}
           className="border-green-500/30 bg-green-500/10"
           iconClassName="text-green-500"
@@ -536,8 +795,8 @@ export default function Reports() {
 
         <KpiCard
           icon={AlertTriangle}
-          title="Incidents"
-          value={incidents.length}
+          title="Filtered Incidents"
+          value={activeIncidentList.length}
           hint={`${highIncidents} high severity`}
           className="border-red-500/30 bg-red-500/10"
           iconClassName="text-red-500"
@@ -603,7 +862,11 @@ export default function Reports() {
             >
               <CardContent className="p-5 space-y-5">
                 <div className="flex items-start justify-between gap-4">
-                  <div className={`p-3 rounded-2xl border ${toneClasses(report.tone)}`}>
+                  <div
+                    className={`p-3 rounded-2xl border ${toneClasses(
+                      report.tone
+                    )}`}
+                  >
                     <Icon className="size-6" />
                   </div>
 
@@ -635,90 +898,32 @@ export default function Reports() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <TrendingUp className="size-5 text-blue-500" />
-              Report Trend Overview
-            </CardTitle>
-          </CardHeader>
+      {showPeopleSections && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-foreground">
+                <TrendingUp className="size-5 text-blue-500" />
+                Filtered People Trend
+              </CardTitle>
+            </CardHeader>
 
-          <CardContent>
-            <ResponsiveContainer width="100%" height={320}>
-              <AreaChart data={trendData}>
-                <defs>
-                  <linearGradient id="reportPeople" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_BORDER} />
-
-                <XAxis
-                  dataKey="time"
-                  stroke={CHART_MUTED}
-                  tick={{ fill: CHART_MUTED, fontSize: 12 }}
-                  axisLine={{ stroke: CHART_BORDER }}
-                  tickLine={{ stroke: CHART_BORDER }}
-                />
-
-                <YAxis
-                  stroke={CHART_MUTED}
-                  tick={{ fill: CHART_MUTED, fontSize: 12 }}
-                  axisLine={{ stroke: CHART_BORDER }}
-                  tickLine={{ stroke: CHART_BORDER }}
-                />
-
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  itemStyle={{ color: CHART_TEXT }}
-                  labelStyle={{ color: CHART_TEXT }}
-                />
-
-                <Area
-                  type="monotone"
-                  dataKey="people"
-                  stroke="#3b82f6"
-                  fill="url(#reportPeople)"
-                  strokeWidth={3}
-                  name="People"
-                />
-
-                <Area
-                  type="monotone"
-                  dataKey="risk"
-                  stroke="#ef4444"
-                  fill="transparent"
-                  strokeWidth={2}
-                  name="Risk"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <BarChart3 className="size-5 text-purple-500" />
-              Camera Performance Report
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            {cameraPerformance.length === 0 ? (
-              <EmptyBox message="Camera performance data mavjud emas." />
-            ) : (
+            <CardContent>
               <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={cameraPerformance}>
+                <AreaChart data={trendData}>
+                  <defs>
+                    <linearGradient id="reportPeople" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+
                   <CartesianGrid strokeDasharray="3 3" stroke={CHART_BORDER} />
 
                   <XAxis
-                    dataKey="name"
+                    dataKey="time"
                     stroke={CHART_MUTED}
-                    tick={{ fill: CHART_MUTED, fontSize: 11 }}
+                    tick={{ fill: CHART_MUTED, fontSize: 12 }}
                     axisLine={{ stroke: CHART_BORDER }}
                     tickLine={{ stroke: CHART_BORDER }}
                   />
@@ -736,114 +941,209 @@ export default function Reports() {
                     labelStyle={{ color: CHART_TEXT }}
                   />
 
-                  <Bar dataKey="people" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="risk" fill="#ef4444" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  <Area
+                    type="monotone"
+                    dataKey="people"
+                    stroke="#3b82f6"
+                    fill="url(#reportPeople)"
+                    strokeWidth={3}
+                    name="People"
+                  />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Card className="border-border/50">
+                  <Area
+                    type="monotone"
+                    dataKey="risk"
+                    stroke="#ef4444"
+                    fill="transparent"
+                    strokeWidth={2}
+                    name="Risk"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-foreground">
+                <BarChart3 className="size-5 text-purple-500" />
+                Filtered Camera Performance
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              {cameraPerformance.length === 0 ? (
+                <EmptyBox message="Camera performance data mavjud emas." />
+              ) : (
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={cameraPerformance}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_BORDER} />
+
+                    <XAxis
+                      dataKey="name"
+                      stroke={CHART_MUTED}
+                      tick={{ fill: CHART_MUTED, fontSize: 11 }}
+                      axisLine={{ stroke: CHART_BORDER }}
+                      tickLine={{ stroke: CHART_BORDER }}
+                    />
+
+                    <YAxis
+                      stroke={CHART_MUTED}
+                      tick={{ fill: CHART_MUTED, fontSize: 12 }}
+                      axisLine={{ stroke: CHART_BORDER }}
+                      tickLine={{ stroke: CHART_BORDER }}
+                    />
+
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      itemStyle={{ color: CHART_TEXT }}
+                      labelStyle={{ color: CHART_TEXT }}
+                    />
+
+                    <Bar dataKey="people" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="risk" fill="#ef4444" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {(showObjectSections || showIncidentSections) && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          {showObjectSections && (
+            <Card className="border-border/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <Database className="size-5 text-cyan-500" />
+                  Filtered Object Evidence
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent>
+                {objectData.length === 0 ? (
+                  <EmptyBox message="Object report data mavjud emas." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie
+                        data={objectData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={4}
+                        label={{
+                          fill: CHART_TEXT,
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                        labelLine={{ stroke: CHART_MUTED }}
+                      >
+                        {objectData.map((_, index) => (
+                          <Cell
+                            key={index}
+                            fill={COLORS[index % COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: CHART_TEXT }}
+                        labelStyle={{ color: CHART_TEXT }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {showIncidentSections && (
+            <Card className="border-border/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <AlertTriangle className="size-5 text-orange-500" />
+                  Filtered Incident Severity
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent>
+                {severityData.length === 0 ? (
+                  <EmptyBox message="Incident severity data mavjud emas." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie
+                        data={severityData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={4}
+                        label={{
+                          fill: CHART_TEXT,
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                        labelLine={{ stroke: CHART_MUTED }}
+                      >
+                        {severityData.map((_, index) => (
+                          <Cell
+                            key={index}
+                            fill={COLORS[index % COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: CHART_TEXT }}
+                        labelStyle={{ color: CHART_TEXT }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {showForecastSections && (
+        <Card className="border-border/50 bg-purple-500/5">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-foreground">
-              <Database className="size-5 text-cyan-500" />
-              Object Evidence Summary
+              <TrendingUp className="size-5 text-purple-500" />
+              Forecast Report Context
             </CardTitle>
           </CardHeader>
 
-          <CardContent>
-            {objectData.length === 0 ? (
-              <EmptyBox message="Object report data mavjud emas." />
-            ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={objectData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={4}
-                    label={{
-                      fill: CHART_TEXT,
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                    labelLine={{ stroke: CHART_MUTED }}
-                  >
-                    {objectData.map((_, index) => (
-                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    itemStyle={{ color: CHART_TEXT }}
-                    labelStyle={{ color: CHART_TEXT }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <MiniMetric
+              label="Selected Camera"
+              value={selectedCamera === "all" ? "All Cameras" : selectedCamera}
+            />
+            <MiniMetric
+              label="Date Range"
+              value={`${startDate || "Any"} → ${endDate || "Any"}`}
+            />
+            <MiniMetric label="Report Type" value={reportType} />
           </CardContent>
         </Card>
-
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <AlertTriangle className="size-5 text-orange-500" />
-              Incident Severity Summary
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            {severityData.length === 0 ? (
-              <EmptyBox message="Incident severity data mavjud emas." />
-            ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={severityData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={4}
-                    label={{
-                      fill: CHART_TEXT,
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                    labelLine={{ stroke: CHART_MUTED }}
-                  >
-                    {severityData.map((_, index) => (
-                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    itemStyle={{ color: CHART_TEXT }}
-                    labelStyle={{ color: CHART_TEXT }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      )}
 
       <Card className="border-border/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-foreground">
             <Camera className="size-5 text-blue-500" />
-            Camera Report Table
+            Filtered Camera Report Table
           </CardTitle>
         </CardHeader>
 
@@ -864,7 +1164,7 @@ export default function Reports() {
               </TableHeader>
 
               <TableBody>
-                {cameras.length === 0 ? (
+                {activeCameraList.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={8}
@@ -874,7 +1174,7 @@ export default function Reports() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  cameras.map((camera) => {
+                  activeCameraList.map((camera) => {
                     const objects =
                       numberValue(camera.laptops) +
                       numberValue(camera.phones) +
@@ -934,80 +1234,82 @@ export default function Reports() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-foreground">
-            <Calendar className="size-5 text-red-500" />
-            Recent Incident Evidence
-          </CardTitle>
-        </CardHeader>
+      {showIncidentSections && (
+        <Card className="border-border/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-foreground">
+              <Calendar className="size-5 text-red-500" />
+              Filtered Incident Evidence
+            </CardTitle>
+          </CardHeader>
 
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Camera</TableHead>
-                  <TableHead>Incident</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Description</TableHead>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                {incidents.length === 0 ? (
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="text-center text-muted-foreground py-8"
-                    >
-                      Recent incident evidence mavjud emas.
-                    </TableCell>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Camera</TableHead>
+                    <TableHead>Incident</TableHead>
+                    <TableHead>Severity</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Description</TableHead>
                   </TableRow>
-                ) : (
-                  incidents.slice(0, 10).map((incident, index) => (
-                    <TableRow key={incident.id || index}>
-                      <TableCell className="font-mono text-xs">
-                        {incident.created_at || incident.timestamp || "-"}
-                      </TableCell>
+                </TableHeader>
 
-                      <TableCell>{incident.camera_id || "Unknown"}</TableCell>
-
-                      <TableCell className="font-medium text-foreground">
-                        {incident.incident_type || incident.title || "Incident"}
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge className={severityBadge(incident.severity)}>
-                          {incident.severity || "LOW"}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell>{incident.status || "open"}</TableCell>
-
-                      <TableCell className="text-muted-foreground max-w-[360px] truncate">
-                        {incident.message ||
-                          incident.description ||
-                          "AI incident event captured for report evidence."}
+                <TableBody>
+                  {activeIncidentList.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="text-center text-muted-foreground py-8"
+                      >
+                        Filter bo‘yicha incident evidence topilmadi.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                  ) : (
+                    activeIncidentList.slice(0, 10).map((incident, index) => (
+                      <TableRow key={incident.id || index}>
+                        <TableCell className="font-mono text-xs">
+                          {incident.created_at || incident.timestamp || "-"}
+                        </TableCell>
+
+                        <TableCell>{incident.camera_id || "Unknown"}</TableCell>
+
+                        <TableCell className="font-medium text-foreground">
+                          {incident.incident_type || incident.title || "Incident"}
+                        </TableCell>
+
+                        <TableCell>
+                          <Badge className={severityBadge(incident.severity)}>
+                            {incident.severity || "LOW"}
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell>{incident.status || "open"}</TableCell>
+
+                        <TableCell className="text-muted-foreground max-w-[360px] truncate">
+                          {incident.message ||
+                            incident.description ||
+                            "AI incident event captured for report evidence."}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <ReportSummaryCard
           icon={CheckCircle2}
-          title="Report Readiness"
-          value={error ? "Warning" : "Ready"}
-          hint="Export data availability"
-          tone={error ? "yellow" : "green"}
+          title="Report Filter Status"
+          value={filterApplied ? "Filtered" : "Default"}
+          hint="Current report view mode"
+          tone={filterApplied ? "blue" : "green"}
         />
 
         <ReportSummaryCard
