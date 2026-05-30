@@ -26,7 +26,7 @@ pip install -r requirements.txt
 ## Run detector
 
 ```bash
-python app/main_detector.py --url 'rtsp://test:Test321!@192.168.1.132:554/' --camera-id cam_01 --site "My Camera" --model yolov8s.pt --log-every 60 --detect-every 2 --conf 0.08 --width 960 --height 540 --show
+python app/main_detector.py --url 'rtsp://USERNAME:PASSWORD@CAMERA_IP:554/stream1' --camera-id cam_01 --site "My Camera" --model yolov8s.pt --log-every 60 --detect-every 2 --conf 0.08 --width 960 --height 540 --show
 ```
 
 ## Run API server
