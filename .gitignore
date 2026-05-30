@@ -1,0 +1,36 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Frontend build output
+frontend/dist/
+frontend/.env
+
+# Runtime data
+data/
+frames/
+logs/
+reports/
+exports/
+streams/cameras.json
+
+# Large model weights. Upload these to the server separately if needed.
+*.pt
+*.onnx
+*.engine
+
+# Local editor files
+.idea/
+.vscode/
