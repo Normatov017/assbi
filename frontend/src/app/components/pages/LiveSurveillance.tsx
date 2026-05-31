@@ -132,6 +132,21 @@ function getFrameUrl(camera?: CameraType) {
   return `${API}${camera.frame_url}?t=${Date.now()}`;
 }
 
+function getYoutubeEmbedUrl(camera?: CameraType) {
+  if (!camera?.url || !String(camera.type || "").toLowerCase().includes("youtube")) {
+    return "";
+  }
+
+  const source = String(camera.url);
+  const match =
+    source.match(/[?&]v=([^&]+)/) ||
+    source.match(/youtu\.be\/([^?&]+)/) ||
+    source.match(/youtube\.com\/live\/([^?&/]+)/);
+
+  const videoId = match?.[1];
+  return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1` : "";
+}
+
 function cameraSourceLabel(type?: string) {
   const value = String(type || "unknown").toLowerCase();
 
@@ -387,6 +402,7 @@ export default function LiveSurveillance() {
   const cameraEvents = useMemo(() => makeCameraEvents(cameras), [cameras]);
 
   const selectedFrameUrl = getFrameUrl(selectedCamera);
+  const selectedYoutubeEmbedUrl = getYoutubeEmbedUrl(selectedCamera);
 
   const operatorInsight = useMemo(() => {
     if (error) {
@@ -663,7 +679,16 @@ export default function LiveSurveillance() {
               </div>
 
               <div className="relative rounded-2xl overflow-hidden border border-border/50 bg-black min-h-[430px] flex items-center justify-center">
-                {selectedCamera && selectedFrameUrl ? (
+                {selectedYoutubeEmbedUrl ? (
+                  <iframe
+                    key={`${selectedCamera?.camera_id}-youtube`}
+                    src={selectedYoutubeEmbedUrl}
+                    title={selectedCamera?.site || selectedCamera?.camera_id}
+                    className="w-full min-h-[430px] h-full max-h-[600px]"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                ) : selectedCamera && selectedFrameUrl ? (
                   <img
                     key={`${selectedCamera.camera_id}-${lastUpdated.getTime()}`}
                     src={selectedFrameUrl}
