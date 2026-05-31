@@ -2,8 +2,11 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    ASSBI_LIGHTWEIGHT_DETECTOR=1
+    PIP_NO_CACHE_DIR=1
+
+ARG REQUIREMENTS_FILE=requirements-api.txt
+ARG ASSBI_LIGHTWEIGHT_DETECTOR=1
+ENV ASSBI_LIGHTWEIGHT_DETECTOR=${ASSBI_LIGHTWEIGHT_DETECTOR}
 
 WORKDIR /app
 
@@ -14,8 +17,8 @@ RUN apt-get update \
         libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements-api.txt .
-RUN pip install -r requirements-api.txt
+COPY requirements*.txt ./
+RUN pip install -r ${REQUIREMENTS_FILE}
 
 COPY app ./app
 
