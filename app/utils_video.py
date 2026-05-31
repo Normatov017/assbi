@@ -34,7 +34,9 @@ def get_youtube_stream_url(url):
 
 def open_video_source(source):
     if source.startswith("http") and ("youtube.com" in source or "youtu.be" in source):
-        return cv2.VideoCapture(get_youtube_stream_url(source))
+        return cv2.VideoCapture(get_youtube_stream_url(source), cv2.CAP_FFMPEG)
+    if source.startswith("http"):
+        return cv2.VideoCapture(source, cv2.CAP_FFMPEG)
     return cv2.VideoCapture(source)
 
 def draw_zones(frame):
