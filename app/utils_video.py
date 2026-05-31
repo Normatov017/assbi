@@ -1,7 +1,30 @@
-import cv2, yt_dlp
+import os
+from pathlib import Path
+
+import cv2
+import yt_dlp
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def youtube_cookie_options():
+    cookie_path = Path(
+        os.environ.get("YOUTUBE_COOKIES_FILE", BASE_DIR / "streams" / "youtube_cookies.txt")
+    )
+    if cookie_path.exists() and cookie_path.stat().st_size > 0:
+        return {"cookiefile": str(cookie_path)}
+    return {}
+
 
 def get_youtube_stream_url(url):
-    opts={"format":"best","quiet":True,"no_warnings":True,"cookiesfrombrowser":("chrome",),"extractor_args":{"youtube":{"player_client":["android","web"]}}}
+    opts = {
+        "format": "best[ext=mp4]/best",
+        "quiet": True,
+        "no_warnings": True,
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        **youtube_cookie_options(),
+    }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info=ydl.extract_info(url, download=False)
         if info.get("url"): return info["url"]

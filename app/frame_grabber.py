@@ -6,6 +6,8 @@ from pathlib import Path
 import cv2
 import yt_dlp
 
+from utils_video import youtube_cookie_options
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRAMES_DIR = BASE_DIR / "frames"
@@ -21,6 +23,7 @@ def get_stream_url(url: str) -> str:
         "quiet": True,
         "no_warnings": True,
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        **youtube_cookie_options(),
     }
 
     with yt_dlp.YoutubeDL(options) as ydl:
