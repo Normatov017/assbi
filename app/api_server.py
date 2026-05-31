@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -260,7 +261,8 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     if speed_mode not in ["slow", "normal", "fast"]:
         speed_mode = "normal"
 
-    detector_path = BASE_DIR / "app" / "main_detector.py"
+    lightweight = os.getenv("ASSBI_LIGHTWEIGHT_DETECTOR", "0") == "1"
+    detector_path = BASE_DIR / "app" / ("frame_grabber.py" if lightweight else "main_detector.py")
     if not detector_path.exists():
         return False
 
@@ -273,14 +275,16 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
         camera_id,
         "--site",
         site,
-        "--clean-ui",
-        "--speed-mode",
-        speed_mode,
     ]
 
-    if is_local_video(url):
-        cmd.extend(["--detect-every", "3", "--log-every", "5"])
+    if lightweight:
+        cmd.extend(["--interval", "1.5"])
     else:
+        cmd.extend(["--clean-ui", "--speed-mode", speed_mode])
+
+    if not lightweight and is_local_video(url):
+        cmd.extend(["--detect-every", "3", "--log-every", "5"])
+    elif not lightweight:
         cmd.append("--fast-mode")
 
     log_file = open(LOGS_DIR / f"{camera_id}.log", "a", encoding="utf-8")

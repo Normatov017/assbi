@@ -4,3 +4,5 @@ python-multipart
 pandas
 openpyxl
 reportlab
+opencv-python-headless
+yt-dlp
