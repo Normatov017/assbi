@@ -1,9 +1,17 @@
 services:
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     restart: unless-stopped
+    depends_on:
+      - bgutil-provider
+    environment:
+      YOUTUBE_POT_PROVIDER_URL: http://bgutil-provider:4416
     volumes:
       - ./data:/app/data
       - ./frames:/app/frames

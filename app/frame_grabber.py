@@ -6,7 +6,7 @@ from pathlib import Path
 import cv2
 import yt_dlp
 
-from utils_video import youtube_cookie_options
+from utils_video import youtube_cookie_options, youtube_extractor_args
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,7 +22,7 @@ def get_stream_url(url: str) -> str:
         "format": "best[ext=mp4]/best",
         "quiet": True,
         "no_warnings": True,
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "extractor_args": youtube_extractor_args(),
         **youtube_cookie_options(),
     }
 

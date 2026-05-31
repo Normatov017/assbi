@@ -6,6 +6,7 @@ torchvision
 opencv-python-headless
 ultralytics
 yt-dlp
+bgutil-ytdlp-pot-provider
 pandas
 numpy
 openpyxl

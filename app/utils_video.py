@@ -17,12 +17,20 @@ def youtube_cookie_options():
     return {}
 
 
+def youtube_extractor_args():
+    args = {"youtube": {"player_client": ["android", "web", "web_embedded"]}}
+    provider_url = os.environ.get("YOUTUBE_POT_PROVIDER_URL")
+    if provider_url:
+        args["youtubepot-bgutilhttp"] = {"base_url": [provider_url]}
+    return args
+
+
 def get_youtube_stream_url(url):
     opts = {
         "format": "best[ext=mp4]/best",
         "quiet": True,
         "no_warnings": True,
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "extractor_args": youtube_extractor_args(),
         **youtube_cookie_options(),
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
