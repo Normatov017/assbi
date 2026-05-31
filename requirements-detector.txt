@@ -1,0 +1,16 @@
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+
+torch
+torchvision
+opencv-python-headless
+ultralytics
+yt-dlp
+pandas
+numpy
+openpyxl
+scikit-learn
+reportlab
+fastapi
+uvicorn
+python-multipart
