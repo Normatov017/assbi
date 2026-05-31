@@ -44,6 +44,11 @@ API health check:
 http://SERVER_IP/api/health
 ```
 
+The default Docker API image uses `requirements-api.txt` so it can run on small
+free-tier servers. This starts the dashboard and API, but not the full
+YOLO/PyTorch detector stack. For production camera detection, use a larger VPS
+or GPU server and install `requirements.txt`.
+
 ## 4. Model files
 
 The `.pt` model files are intentionally not committed to GitHub. Copy them to the server when needed:

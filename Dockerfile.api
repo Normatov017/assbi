@@ -13,8 +13,8 @@ RUN apt-get update \
         libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY requirements-api.txt .
+RUN pip install -r requirements-api.txt
 
 COPY app ./app
 
