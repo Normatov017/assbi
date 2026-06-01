@@ -68,6 +68,7 @@ def parse_args():
 
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
+    parser.add_argument("--imgsz", type=int, default=640)
 
     parser.add_argument("--fast-mode", action="store_true")
     parser.add_argument(
@@ -279,7 +280,7 @@ def main():
                 frame,
                 conf=args.conf,
                 iou=0.35,
-                imgsz=640 if args.fast_mode or local_source else 960,
+                imgsz=args.imgsz,
                 persist=True,
                 tracker="bytetrack.yaml",
                 verbose=False,

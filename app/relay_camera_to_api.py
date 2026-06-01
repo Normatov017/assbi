@@ -1,6 +1,7 @@
 import argparse
 import sqlite3
 import time
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -16,7 +17,6 @@ FRAMES_DIR = BASE_DIR / "frames"
 
 
 FIELDS = [
-    "timestamp",
     "active_people",
     "new_unique_people",
     "total_unique_people",
@@ -69,8 +69,6 @@ def main():
 
     endpoint = args.api_url.rstrip("/") + "/api/ingest/frame"
     frame_path = FRAMES_DIR / f"{args.camera_id}.jpg"
-    last_timestamp = None
-
     while True:
         row = latest_row(args.camera_id)
         if not row or not frame_path.exists():
@@ -79,18 +77,17 @@ def main():
 
         row_data = dict(row)
         timestamp = row_data.get("timestamp")
-        if timestamp == last_timestamp:
-            time.sleep(args.interval)
-            continue
 
         payload = {
             "camera_id": args.camera_id,
             "site": args.site,
             "source_url": args.source_url,
             "camera_type": args.camera_type,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
         for field in FIELDS:
             payload[field] = row_data.get(field, 0)
+        payload["fps"] = max(float(payload.get("fps") or 0), round(1 / args.interval, 2))
 
         try:
             with frame_path.open("rb") as handle:
@@ -101,7 +98,6 @@ def main():
                     timeout=10,
                 )
             response.raise_for_status()
-            last_timestamp = timestamp
             print(f"[ASSBI relay] uploaded {args.camera_id} {timestamp}", flush=True)
         except Exception as exc:
             print(f"[ASSBI relay] upload failed: {exc}", flush=True)
