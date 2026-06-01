@@ -374,6 +374,8 @@ def main():
                     phone_count += 1
 
         active_people = standing_count + sitting_count if local_source else len(active_tracks)
+        if active_people == 0 and standing_count + sitting_count > 0:
+            active_people = standing_count + sitting_count
 
         zone_peak = max(left_zone, center_zone, right_zone)
         level = crowd_level(active_people, thresholds)
