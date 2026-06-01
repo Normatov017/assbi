@@ -659,6 +659,7 @@ PUBLIC_API_PATHS = {
     "/api/auth/login",
     "/api/auth/logout",
     "/api/ingest/frame",
+    "/api/relay/cameras",
 }
 
 
@@ -783,6 +784,11 @@ def cameras(
     end_date: Optional[str] = Query(default=None),
 ):
     return build_cameras_response(camera_id, start_date, end_date)
+
+
+@app.get("/api/relay/cameras")
+def relay_cameras():
+    return build_cameras_response()
 
 
 @app.post("/api/cameras")

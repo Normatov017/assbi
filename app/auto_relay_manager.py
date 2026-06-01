@@ -171,7 +171,9 @@ def start_camera(camera, api_url, env):
 
 
 def fetch_cameras(api_url):
-    response = requests.get(api_url.rstrip("/") + "/api/cameras", timeout=10)
+    response = requests.get(api_url.rstrip("/") + "/api/relay/cameras", timeout=10)
+    if response.status_code == 404:
+        response = requests.get(api_url.rstrip("/") + "/api/cameras", timeout=10)
     response.raise_for_status()
     return response.json()
 
