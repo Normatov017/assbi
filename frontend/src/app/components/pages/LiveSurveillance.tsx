@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -135,11 +135,15 @@ function getFrameUrl(camera?: CameraType) {
 function getStreamUrl(camera?: CameraType) {
   if (!camera?.stream_url) return "";
 
+  const cacheKey = `camera=${encodeURIComponent(camera.camera_id)}`;
+
   if (camera.stream_url.startsWith("http")) {
-    return camera.stream_url;
+    return camera.stream_url.includes("?")
+      ? `${camera.stream_url}&${cacheKey}`
+      : `${camera.stream_url}?${cacheKey}`;
   }
 
-  return `${API}${camera.stream_url}`;
+  return `${API}${camera.stream_url}?${cacheKey}`;
 }
 
 function getYoutubeEmbedUrl(camera?: CameraType) {
@@ -292,6 +296,7 @@ export default function LiveSurveillance() {
   const [search, setSearch] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [sortMode, setSortMode] = useState<SortMode>("risk");
+  const selectedCameraButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const loadCameras = useCallback(async (silent = false) => {
     try {
@@ -408,6 +413,33 @@ export default function LiveSurveillance() {
 
     return items;
   }, [cameras, search, filterMode, sortMode]);
+
+  const sidebarCameras = useMemo(() => {
+    if (!selectedCameraId) return filteredCameras;
+
+    const selected = filteredCameras.find(
+      (camera) => camera.camera_id === selectedCameraId
+    );
+
+    if (!selected) return filteredCameras;
+
+    return [
+      selected,
+      ...filteredCameras.filter((camera) => camera.camera_id !== selectedCameraId),
+    ];
+  }, [filteredCameras, selectedCameraId]);
+
+  const selectCamera = useCallback((cameraId: string) => {
+    setSelectedCameraId(cameraId);
+    setLastUpdated(new Date());
+  }, []);
+
+  useEffect(() => {
+    selectedCameraButtonRef.current?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }, [selectedCameraId]);
 
   const cameraEvents = useMemo(() => makeCameraEvents(cameras), [cameras]);
 
@@ -946,7 +978,7 @@ export default function LiveSurveillance() {
                         <TableRow
                           key={camera.camera_id}
                           className="cursor-pointer hover:bg-muted/30"
-                          onClick={() => setSelectedCameraId(camera.camera_id)}
+                          onClick={() => selectCamera(camera.camera_id)}
                         >
                           <TableCell>
                             <div>
@@ -1073,60 +1105,108 @@ export default function LiveSurveillance() {
           </Card>
 
           <Card className="border-border/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-foreground">
-                <Camera className="size-5 text-green-500" />
-                Camera List
-              </CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <Camera className="size-5 text-green-500" />
+                  Camera List
+                </CardTitle>
+
+                <Badge variant="outline" className="text-foreground">
+                  {filteredCameras.length}
+                </Badge>
+              </div>
             </CardHeader>
 
-            <CardContent className="space-y-3 max-h-[520px] overflow-y-auto">
+            <CardContent className="space-y-2 max-h-[560px] overflow-y-auto pr-2">
               {filteredCameras.length === 0 ? (
                 <EmptyBox message="Camera topilmadi." />
               ) : (
-                filteredCameras.map((camera) => {
+                sidebarCameras.map((camera) => {
                   const active =
                     selectedCamera?.camera_id === camera.camera_id;
 
                   return (
                     <button
                       key={camera.camera_id}
-                      onClick={() => setSelectedCameraId(camera.camera_id)}
-                      className={`w-full text-left rounded-xl border p-4 transition ${
+                      ref={active ? selectedCameraButtonRef : null}
+                      onClick={() => selectCamera(camera.camera_id)}
+                      className={`group w-full text-left rounded-xl border p-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
                         active
-                          ? "border-blue-500 bg-blue-500/10"
-                          : "border-border/50 bg-muted/20 hover:border-blue-500/50"
+                          ? "border-blue-500 bg-blue-500/15 shadow-[0_0_0_1px_rgba(59,130,246,0.25)]"
+                          : "border-border/50 bg-muted/15 hover:border-blue-500/50 hover:bg-blue-500/5"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-foreground truncate">
-                            {camera.site || camera.camera_id}
-                          </p>
-                          <p className="text-xs text-muted-foreground font-mono truncate">
-                            {camera.camera_id}
-                          </p>
+                      <div className="flex gap-3">
+                        <div
+                          className={`mt-1 h-12 w-1.5 rounded-full ${
+                            active
+                              ? "bg-blue-500"
+                              : camera.running
+                              ? "bg-green-500/80"
+                              : "bg-red-500/80"
+                          }`}
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-foreground truncate">
+                                  {camera.site || camera.camera_id}
+                                </p>
+                                {active && (
+                                  <Badge className="bg-blue-500 text-white">
+                                    SELECTED
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground font-mono truncate">
+                                {camera.camera_id}
+                              </p>
+                            </div>
+
+                            <Badge className={statusBadge(camera.running)}>
+                              {camera.running ? "ONLINE" : "OFFLINE"}
+                            </Badge>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+                            <TinyMetric
+                              label="People"
+                              value={camera.active_people || 0}
+                            />
+                            <TinyMetric
+                              label="Obj"
+                              value={getTotalObjects(camera)}
+                            />
+                            <TinyMetric
+                              label="FPS"
+                              value={numberValue(camera.fps).toFixed(1)}
+                            />
+                            <TinyMetric
+                              label="Risk"
+                              value={formatPercent(camera.risk_score)}
+                              tone={
+                                numberValue(camera.risk_score) >= 70
+                                  ? "bad"
+                                  : numberValue(camera.risk_score) >= 35
+                                  ? "warning"
+                                  : "good"
+                              }
+                            />
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                            <span className="truncate">
+                              {cameraSourceLabel(camera.type)} •{" "}
+                              {camera.speed_mode || "normal"}
+                            </span>
+                            <span className="shrink-0">
+                              Q {formatPercent(camera.quality)}
+                            </span>
+                          </div>
                         </div>
-
-                        <Badge className={statusBadge(camera.running)}>
-                          {camera.running ? "ONLINE" : "OFFLINE"}
-                        </Badge>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-2 text-center">
-                        <TinyMetric
-                          label="People"
-                          value={camera.active_people || 0}
-                        />
-                        <TinyMetric label="Obj" value={getTotalObjects(camera)} />
-                        <TinyMetric
-                          label="FPS"
-                          value={numberValue(camera.fps).toFixed(1)}
-                        />
-                        <TinyMetric
-                          label="Risk"
-                          value={formatPercent(camera.risk_score)}
-                        />
                       </div>
                     </button>
                   );
@@ -1235,12 +1315,23 @@ function MetricBox({
 function TinyMetric({
   label,
   value,
+  tone = "default",
 }: {
   label: string;
   value: string | number;
+  tone?: "default" | "good" | "warning" | "bad";
 }) {
+  const toneClass =
+    tone === "good"
+      ? "border-green-500/25 bg-green-500/10"
+      : tone === "warning"
+      ? "border-yellow-500/25 bg-yellow-500/10"
+      : tone === "bad"
+      ? "border-red-500/25 bg-red-500/10"
+      : "border-border/50 bg-background/40";
+
   return (
-    <div className="rounded-lg border border-border/50 bg-background/40 p-2">
+    <div className={`rounded-lg border p-2 ${toneClass}`}>
       <p className="text-[10px] text-muted-foreground">{label}</p>
       <p className="text-sm font-semibold text-foreground mt-1">{value}</p>
     </div>
