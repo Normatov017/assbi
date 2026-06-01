@@ -65,6 +65,7 @@ def main():
     parser.add_argument("--source-url", default="")
     parser.add_argument("--camera-type", default="youtube")
     parser.add_argument("--interval", type=float, default=2.0)
+    parser.add_argument("--allow-create", action="store_true")
     args = parser.parse_args()
 
     endpoint = args.api_url.rstrip("/") + "/api/ingest/frame"
@@ -84,6 +85,7 @@ def main():
             "source_url": args.source_url,
             "camera_type": args.camera_type,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "allow_create": "true" if args.allow_create else "false",
         }
         for field in FIELDS:
             payload[field] = row_data.get(field, 0)

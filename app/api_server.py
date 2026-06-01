@@ -685,6 +685,7 @@ async def ingest_camera_frame(
     risk_score: int = Form(0),
     fps: float = Form(0),
     data_quality_score: float = Form(0),
+    allow_create: bool = Form(False),
 ):
     cam_id = normalize_camera_id(camera_id)
     now = pd.Timestamp.now()
@@ -692,13 +693,24 @@ async def ingest_camera_frame(
     if pd.isna(parsed):
         parsed = now
 
+    cameras_data = load_cameras()
+    camera_exists = any(cam.get("camera_id") == cam_id for cam in cameras_data)
+    if not camera_exists and not allow_create:
+        return JSONResponse(
+            {
+                "ok": False,
+                "camera_id": cam_id,
+                "message": "Camera is not configured. Add it before ingesting frames.",
+            },
+            status_code=404,
+        )
+
     final_path = FRAMES_DIR / f"{cam_id}.jpg"
     temp_path = FRAMES_DIR / f"{cam_id}_tmp.jpg"
     temp_path.write_bytes(await frame.read())
     temp_path.replace(final_path)
 
-    cameras_data = load_cameras()
-    if not any(cam.get("camera_id") == cam_id for cam in cameras_data):
+    if not camera_exists:
         cameras_data.append(
             {
                 "camera_id": cam_id,
