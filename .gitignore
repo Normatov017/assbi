@@ -25,6 +25,7 @@ logs/
 reports/
 exports/
 streams/cameras.json
+streams/youtube_cookies.txt
 
 # Large model weights. Upload these to the server separately if needed.
 *.pt

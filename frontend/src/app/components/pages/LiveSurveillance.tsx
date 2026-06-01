@@ -132,6 +132,16 @@ function getFrameUrl(camera?: CameraType) {
   return `${API}${camera.frame_url}?t=${Date.now()}`;
 }
 
+function getStreamUrl(camera?: CameraType) {
+  if (!camera?.stream_url) return "";
+
+  if (camera.stream_url.startsWith("http")) {
+    return camera.stream_url;
+  }
+
+  return `${API}${camera.stream_url}`;
+}
+
 function getYoutubeEmbedUrl(camera?: CameraType) {
   if (!camera?.url || !String(camera.type || "").toLowerCase().includes("youtube")) {
     return "";
@@ -402,6 +412,7 @@ export default function LiveSurveillance() {
   const cameraEvents = useMemo(() => makeCameraEvents(cameras), [cameras]);
 
   const selectedFrameUrl = getFrameUrl(selectedCamera);
+  const selectedStreamUrl = getStreamUrl(selectedCamera);
   const selectedYoutubeEmbedUrl = getYoutubeEmbedUrl(selectedCamera);
 
   const operatorInsight = useMemo(() => {
@@ -679,7 +690,14 @@ export default function LiveSurveillance() {
               </div>
 
               <div className="relative rounded-2xl overflow-hidden border border-border/50 bg-black min-h-[430px] flex items-center justify-center">
-                {selectedYoutubeEmbedUrl ? (
+                {selectedCamera?.running && selectedStreamUrl ? (
+                  <img
+                    key={`${selectedCamera.camera_id}-stream`}
+                    src={selectedStreamUrl}
+                    alt={selectedCamera.site || selectedCamera.camera_id}
+                    className="w-full h-full object-contain max-h-[600px]"
+                  />
+                ) : selectedYoutubeEmbedUrl ? (
                   <iframe
                     key={`${selectedCamera?.camera_id}-youtube`}
                     src={selectedYoutubeEmbedUrl}
