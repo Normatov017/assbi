@@ -39,9 +39,10 @@ import {
 } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Switch } from "./ui/switch";
+import { API_BASE } from "../lib/config";
 
 interface LoginScreenProps {
-  onLogin: () => void;
+  onLogin: (user?: unknown) => void;
 }
 
 type RoleType = "admin" | "security" | "analyst" | "manager";
@@ -50,7 +51,6 @@ type DemoRole = {
   value: RoleType;
   label: string;
   email: string;
-  password: string;
   description: string;
   icon: LucideIcon;
 };
@@ -60,7 +60,6 @@ const demoRoles: DemoRole[] = [
     value: "admin",
     label: "Admin",
     email: "admin@assbi.com",
-    password: "admin123",
     description: "Full platform access",
     icon: Shield,
   },
@@ -68,7 +67,6 @@ const demoRoles: DemoRole[] = [
     value: "security",
     label: "Security Officer",
     email: "security@assbi.com",
-    password: "security123",
     description: "Live surveillance and alerts",
     icon: Camera,
   },
@@ -76,7 +74,6 @@ const demoRoles: DemoRole[] = [
     value: "analyst",
     label: "BI Analyst",
     email: "analyst@assbi.com",
-    password: "analyst123",
     description: "Reports and analytics",
     icon: BarChart3,
   },
@@ -84,7 +81,6 @@ const demoRoles: DemoRole[] = [
     value: "manager",
     label: "Manager",
     email: "manager@assbi.com",
-    password: "manager123",
     description: "Executive dashboard",
     icon: Users,
   },
@@ -96,7 +92,7 @@ function getRoleData(role: string) {
 
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState("admin@assbi.com");
-  const [password, setPassword] = useState("admin123");
+  const [password, setPassword] = useState("");
   const [role, setRole] = useState<RoleType>("admin");
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -122,7 +118,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
     setRole(nextRole);
     setEmail(roleData.email);
-    setPassword(roleData.password);
     setError("");
   }
 
@@ -131,7 +126,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
     setRole(roleData.value);
     setEmail(roleData.email);
-    setPassword(roleData.password);
     setError("");
   }
 
@@ -161,8 +155,33 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
     try {
       setIsLoading(true);
-      await new Promise((resolve) => window.setTimeout(resolve, 650));
-      onLogin();
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          email,
+          password,
+          role,
+          remember_me: rememberMe,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        setError(data?.message || "Email yoki password noto'g'ri.");
+        return;
+      }
+
+      if (data.token) {
+        localStorage.setItem("assbi_token", data.token);
+      }
+
+      onLogin(data.user);
+    } catch {
+      setError("Server bilan bog'lanib bo'lmadi. Internet yoki domenni tekshiring.");
     } finally {
       setIsLoading(false);
     }
@@ -331,7 +350,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                       </div>
 
                       <Badge className="ml-auto bg-green-500/10 text-green-500 border border-green-500/20">
-                        Demo
+                        Secure
                       </Badge>
                     </div>
                   </div>
@@ -482,11 +501,11 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
                 <div>
                   <p className="text-sm font-medium text-white">
-                    Demo access enabled
+                    Authorized access only
                   </p>
                   <p className="text-xs text-white/55 mt-1">
-                    Select any role card to auto-fill login credentials for
-                    presentation and testing mode.
+                    Select a role to fill the email, then enter the assigned
+                    password to open the dashboard.
                   </p>
                 </div>
               </div>

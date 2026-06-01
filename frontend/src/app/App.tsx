@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 
 import LoginScreen from "./components/LoginScreen";
 import DashboardLayout from "./components/DashboardLayout";
+import { API_BASE } from "./lib/config";
 
 import DashboardOverview from "./components/pages/DashboardOverview";
 import LiveSurveillance from "./components/pages/LiveSurveillance";
@@ -15,12 +16,14 @@ import AIChatbot from "./components/pages/AIChatbot";
 import Settings from "./components/pages/Settings";
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem("assbi_auth") === "true";
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
-  function handleLogin() {
+  function handleLogin(user?: unknown) {
     localStorage.setItem("assbi_auth", "true");
+    if (user) {
+      localStorage.setItem("assbi_user", JSON.stringify(user));
+    }
     setIsAuthenticated(true);
   }
 
@@ -30,12 +33,50 @@ export default function App() {
   }
 
   useEffect(() => {
-    const auth = localStorage.getItem("assbi_auth");
+    let cancelled = false;
 
-    if (auth === "true") {
-      setIsAuthenticated(true);
+    async function verifySession() {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/me`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => null);
+
+        if (!cancelled && res.ok && data?.user) {
+          handleLogin(data.user);
+          setIsCheckingSession(false);
+          return;
+        }
+      } catch {
+        // Login screen will handle new authentication.
+      }
+
+      if (!cancelled) {
+        localStorage.removeItem("assbi_auth");
+        localStorage.removeItem("assbi_user");
+        setIsAuthenticated(false);
+      }
+
+      if (!cancelled) {
+        setIsCheckingSession(false);
+      }
     }
+
+    verifySession();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  if (isCheckingSession) {
+    return (
+      <div className="dark min-h-screen w-full bg-[#070b1f] text-white flex items-center justify-center">
+        <div className="text-sm text-white/70">Checking secure session...</div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <LoginScreen onLogin={handleLogin} />;

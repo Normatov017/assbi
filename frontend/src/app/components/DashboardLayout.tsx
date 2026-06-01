@@ -34,6 +34,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { API_BASE } from "../lib/config";
 
 type NavItem = {
   name: string;
@@ -348,7 +349,16 @@ export default function DashboardLayout() {
     setNotificationsOpen(false);
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Clear local state even when the network request fails.
+    }
+
     clearLoginStorage();
     window.location.reload();
   }

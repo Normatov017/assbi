@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import json
 import os
 import sqlite3
@@ -8,7 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
-from fastapi import FastAPI, File, Form, Query, UploadFile
+from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -69,6 +72,13 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+    role: Optional[str] = None
+    remember_me: Optional[bool] = True
+
+
 class CameraPayload(BaseModel):
     camera_id: Optional[str] = None
     site: Optional[str] = None
@@ -76,6 +86,117 @@ class CameraPayload(BaseModel):
     type: Optional[str] = "youtube"
     speed_mode: Optional[str] = "normal"
     enabled: Optional[bool] = True
+
+
+DEFAULT_USERS = {
+    "admin@assbi.com": {
+        "password": "admin123",
+        "name": "Admin User",
+        "role": "Administrator",
+    },
+    "security@assbi.com": {
+        "password": "security123",
+        "name": "Security Officer",
+        "role": "Security Officer",
+    },
+    "analyst@assbi.com": {
+        "password": "analyst123",
+        "name": "BI Analyst",
+        "role": "BI Analyst",
+    },
+    "manager@assbi.com": {
+        "password": "manager123",
+        "name": "Manager",
+        "role": "Manager",
+    },
+}
+
+
+SESSION_COOKIE = "assbi_session"
+AUTH_SECRET = os.getenv("ASSBI_AUTH_SECRET", "assbi-local-session-secret-change-me")
+
+
+def load_auth_users() -> dict[str, dict[str, str]]:
+    raw_users = os.getenv("ASSBI_USERS_JSON", "")
+    if not raw_users:
+        return DEFAULT_USERS
+
+    try:
+        users = json.loads(raw_users)
+        if isinstance(users, dict):
+            return users
+    except Exception:
+        pass
+
+    return DEFAULT_USERS
+
+
+def b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def b64url_decode(data: str) -> bytes:
+    padded = data + "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode(padded.encode("ascii"))
+
+
+def sign_payload(payload: str) -> str:
+    digest = hmac.new(AUTH_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).digest()
+    return b64url_encode(digest)
+
+
+def create_session_token(email: str, max_age_seconds: int) -> str:
+    users = load_auth_users()
+    user = users[email]
+    payload = {
+        "email": email,
+        "name": user.get("name", email.split("@")[0]),
+        "role": user.get("role", "User"),
+        "exp": int(time.time()) + max_age_seconds,
+    }
+    encoded_payload = b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    return f"{encoded_payload}.{sign_payload(encoded_payload)}"
+
+
+def verify_session_token(token: str) -> Optional[dict[str, Any]]:
+    if not token or "." not in token:
+        return None
+
+    payload_part, signature = token.rsplit(".", 1)
+    if not hmac.compare_digest(sign_payload(payload_part), signature):
+        return None
+
+    try:
+        payload = json.loads(b64url_decode(payload_part).decode("utf-8"))
+    except Exception:
+        return None
+
+    if safe_int(payload.get("exp", 0)) < int(time.time()):
+        return None
+
+    email = safe_str(payload.get("email", "")).lower()
+    if email not in load_auth_users():
+        return None
+
+    return {
+        "email": email,
+        "name": safe_str(payload.get("name"), email.split("@")[0]),
+        "role": safe_str(payload.get("role"), "User"),
+    }
+
+
+def request_user(request: Request) -> Optional[dict[str, Any]]:
+    token = request.cookies.get(SESSION_COOKIE, "")
+    auth_header = request.headers.get("authorization", "")
+
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+
+    return verify_session_token(token)
+
+
+def auth_required_response() -> JSONResponse:
+    return JSONResponse({"ok": False, "message": "Authentication required"}, status_code=401)
 
 
 def safe_int(value: Any, default: int = 0) -> int:
@@ -533,6 +654,29 @@ def export_df_response(df: pd.DataFrame, filename: str, file_type: str, sheet_na
     )
 
 
+PUBLIC_API_PATHS = {
+    "/api/health",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/ingest/frame",
+}
+
+
+@app.middleware("http")
+async def require_api_session(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
+    path = request.url.path
+    if path.startswith("/api/") and path not in PUBLIC_API_PATHS:
+        user = request_user(request)
+        if not user:
+            return auth_required_response()
+        request.state.user = user
+
+    return await call_next(request)
+
+
 @app.on_event("startup")
 async def startup_event():
     auto_start_cameras()
@@ -549,6 +693,50 @@ def health():
         "settings_file": str(SETTINGS_FILE),
         "running_detectors": list(RUNNING_PROCESSES.keys()),
     }
+
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    email = req.email.strip().lower()
+    users = load_auth_users()
+    user = users.get(email)
+
+    if not user or not hmac.compare_digest(str(user.get("password", "")), req.password):
+        return JSONResponse({"ok": False, "message": "Email yoki password noto'g'ri"}, status_code=401)
+
+    max_age = 60 * 60 * 24 * 7 if req.remember_me else 60 * 60 * 12
+    token = create_session_token(email, max_age)
+    safe_user = {
+        "email": email,
+        "name": user.get("name", email.split("@")[0]),
+        "role": user.get("role", "User"),
+    }
+    response = JSONResponse({"ok": True, "token": token, "user": safe_user})
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=max_age,
+        httponly=True,
+        secure=os.getenv("ASSBI_COOKIE_SECURE", "0") == "1",
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    user = getattr(request.state, "user", None) or request_user(request)
+    if not user:
+        return auth_required_response()
+    return {"ok": True, "user": user}
+
+
+@app.post("/api/auth/logout")
+def logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
 
 
 @app.get("/api/summary")
