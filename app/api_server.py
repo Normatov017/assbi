@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, File, Form, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -18,10 +18,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 try:
     from app.config import DB_PATH
-    from app.database import init_db, get_thresholds, update_threshold
+    from app.database import init_db, get_thresholds, insert_minute_analytics, update_threshold
 except ModuleNotFoundError:
     from config import DB_PATH
-    from database import init_db, get_thresholds, update_threshold
+    from database import init_db, get_thresholds, insert_minute_analytics, update_threshold
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -212,6 +212,21 @@ def latest_by_camera(df: pd.DataFrame) -> pd.DataFrame:
     return work.groupby("camera_id", as_index=False).tail(1)
 
 
+def is_recent_camera_row(row: dict[str, Any], max_age_seconds: int = 15) -> bool:
+    timestamp = safe_str(row.get("timestamp", ""))
+    if not timestamp:
+        return False
+
+    parsed = pd.to_datetime(timestamp, errors="coerce")
+    if pd.isna(parsed):
+        return False
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.tz_convert(None)
+
+    return (pd.Timestamp.now() - parsed).total_seconds() <= max_age_seconds
+
+
 def filter_df(
     df: pd.DataFrame,
     camera_id: Optional[str] = None,
@@ -360,7 +375,7 @@ def build_cameras_response(
         cam_id = cam.get("camera_id")
         latest = latest_map.get(cam_id, {})
         process = RUNNING_PROCESSES.get(cam_id)
-        running = bool(process and process.poll() is None)
+        running = bool(process and process.poll() is None) or is_recent_camera_row(latest)
 
         result.append(
             {
@@ -644,6 +659,86 @@ def start_camera(camera_id: str):
 def stop_camera(camera_id: str):
     stopped = stop_detector(camera_id)
     return {"ok": True, "stopped": stopped}
+
+
+@app.post("/api/ingest/frame")
+async def ingest_camera_frame(
+    frame: UploadFile = File(...),
+    camera_id: str = Form(...),
+    site: str = Form("Remote Camera"),
+    source_url: str = Form(""),
+    camera_type: str = Form("relay"),
+    timestamp: str = Form(""),
+    active_people: int = Form(0),
+    new_unique_people: int = Form(0),
+    total_unique_people: int = Form(0),
+    vehicle_count: int = Form(0),
+    object_count: int = Form(0),
+    laptop_count: int = Form(0),
+    phone_count: int = Form(0),
+    left_zone: int = Form(0),
+    center_zone: int = Form(0),
+    right_zone: int = Form(0),
+    standing_count: int = Form(0),
+    sitting_count: int = Form(0),
+    crowd_level: str = Form("LOW"),
+    risk_score: int = Form(0),
+    fps: float = Form(0),
+    data_quality_score: float = Form(0),
+):
+    cam_id = normalize_camera_id(camera_id)
+    now = pd.Timestamp.now()
+    parsed = pd.to_datetime(timestamp, errors="coerce") if timestamp else now
+    if pd.isna(parsed):
+        parsed = now
+
+    final_path = FRAMES_DIR / f"{cam_id}.jpg"
+    temp_path = FRAMES_DIR / f"{cam_id}_tmp.jpg"
+    temp_path.write_bytes(await frame.read())
+    temp_path.replace(final_path)
+
+    cameras_data = load_cameras()
+    if not any(cam.get("camera_id") == cam_id for cam in cameras_data):
+        cameras_data.append(
+            {
+                "camera_id": cam_id,
+                "site": site,
+                "url": source_url,
+                "type": camera_type,
+                "speed_mode": "normal",
+                "enabled": True,
+            }
+        )
+        save_cameras(cameras_data)
+
+    insert_minute_analytics(
+        {
+            "timestamp": parsed.strftime("%Y-%m-%d %H:%M:%S"),
+            "date": parsed.strftime("%Y-%m-%d"),
+            "hour": int(parsed.hour),
+            "minute": int(parsed.minute),
+            "camera_id": cam_id,
+            "site": site,
+            "active_people": active_people,
+            "new_unique_people": new_unique_people,
+            "total_unique_people": total_unique_people,
+            "vehicle_count": vehicle_count,
+            "object_count": object_count,
+            "laptop_count": laptop_count,
+            "phone_count": phone_count,
+            "left_zone": left_zone,
+            "center_zone": center_zone,
+            "right_zone": right_zone,
+            "standing_count": standing_count,
+            "sitting_count": sitting_count,
+            "crowd_level": crowd_level,
+            "risk_score": risk_score,
+            "fps": fps,
+            "data_quality_score": data_quality_score,
+        }
+    )
+
+    return {"ok": True, "camera_id": cam_id}
 
 
 @app.delete("/api/cameras/{camera_id}")
