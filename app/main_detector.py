@@ -1,4 +1,6 @@
 import argparse
+import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -101,12 +103,31 @@ def open_source_with_low_latency(url):
 
 def save_latest_frame(frame, camera_id):
     final_path = FRAMES_DIR / f"{camera_id}.jpg"
-    temp_path = FRAMES_DIR / f"{camera_id}_tmp.jpg"
+    temp_path = FRAMES_DIR / f"{camera_id}_{os.getpid()}_tmp.jpg"
 
     ok = cv2.imwrite(str(temp_path), frame)
 
     if ok:
         temp_path.replace(final_path)
+
+
+def save_latest_boxes(boxes, camera_id):
+    final_path = FRAMES_DIR / f"{camera_id}_boxes.json"
+    temp_path = FRAMES_DIR / f"{camera_id}_boxes_{os.getpid()}_tmp.json"
+    payload = {
+        "timestamp": time.time(),
+        "boxes": [
+            {
+                "cls_id": int(item["cls_id"]),
+                "confidence": float(item["confidence"]),
+                "xyxy": [int(value) for value in item["xyxy"]],
+                "track_id": item["track_id"],
+            }
+            for item in boxes
+        ],
+    }
+    temp_path.write_text(json.dumps(payload), encoding="utf-8")
+    temp_path.replace(final_path)
 
 
 def draw_panel(
@@ -304,6 +325,8 @@ def main():
                         "xyxy": (x1, y1, x2, y2),
                         "track_id": track_id,
                     })
+
+            save_latest_boxes(latest_boxes, args.camera_id)
 
         active_tracks = {
             tid: seen_time
