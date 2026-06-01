@@ -1,0 +1,4 @@
+normatov.uz, www.normatov.uz {
+    encode gzip zstd
+    reverse_proxy frontend:80
+}
