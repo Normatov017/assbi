@@ -551,7 +551,7 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
                 "--width", "960",
                 "--height", "540",
                 "--interval", "0.12",
-                "--crop-top-ratio", "0.13",
+                "--crop-top-ratio", "0.20",
             ])
         else:
             cmd.extend(["--interval", "0.25"])
@@ -1476,7 +1476,7 @@ def mjpeg_generator(camera_id: str):
                     last_mtime = current_mtime
             except Exception:
                 pass
-        time.sleep(0.12)
+        time.sleep(0.25)
 
 
 @app.get("/api/stream/{camera_id}")

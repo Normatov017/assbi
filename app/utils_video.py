@@ -50,6 +50,6 @@ def open_video_source(source):
 def draw_zones(frame):
     h,w=frame.shape[:2]; x1=w//3; x2=x1*2
     cv2.line(frame,(x1,0),(x1,h),(255,255,255),1); cv2.line(frame,(x2,0),(x2,h),(255,255,255),1)
-    cv2.putText(frame,"LEFT",(14,24),cv2.FONT_HERSHEY_SIMPLEX,0.48,(255,255,255),1)
-    cv2.putText(frame,"CENTER",(x1+14,24),cv2.FONT_HERSHEY_SIMPLEX,0.48,(255,255,255),1)
-    cv2.putText(frame,"RIGHT",(x2+14,24),cv2.FONT_HERSHEY_SIMPLEX,0.48,(255,255,255),1)
+    cv2.putText(frame,"L",(10,16),cv2.FONT_HERSHEY_SIMPLEX,0.34,(255,255,255),1)
+    cv2.putText(frame,"C",(x1+10,16),cv2.FONT_HERSHEY_SIMPLEX,0.34,(255,255,255),1)
+    cv2.putText(frame,"R",(x2+10,16),cv2.FONT_HERSHEY_SIMPLEX,0.34,(255,255,255),1)
