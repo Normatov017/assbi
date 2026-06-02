@@ -684,7 +684,7 @@ def build_cameras_response(
         cam_id = cam.get("camera_id")
         latest = latest_map.get(cam_id, {})
         process = RUNNING_PROCESSES.get(cam_id)
-        running = bool(process and process.poll() is None) or is_recent_camera_row(latest)
+        running = processes_alive(process) or is_recent_camera_row(latest)
 
         result.append(
             {
