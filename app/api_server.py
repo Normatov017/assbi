@@ -643,6 +643,23 @@ def auto_start_cameras() -> None:
             )
 
 
+def restart_enabled_cameras() -> None:
+    cameras = load_cameras()
+    for cam in cameras:
+        cam_id = safe_str(cam.get("camera_id", ""))
+        if cam_id:
+            stop_detector(cam_id)
+
+    for cam in cameras:
+        if cam.get("enabled", True) and cam.get("url"):
+            start_detector(
+                cam.get("camera_id", "cam"),
+                cam.get("site", cam.get("camera_id", "Camera")),
+                cam.get("url", ""),
+                cam.get("speed_mode", "normal"),
+            )
+
+
 def camera_latest_map() -> dict[str, dict[str, Any]]:
     analytics_df = read_table("minute_analytics")
     latest_df = latest_by_camera(analytics_df)
@@ -1968,6 +1985,10 @@ def export_executive_pdf(
 @app.post("/api/incidents/clear")
 def maintenance_cleanup(payload: Optional[dict[str, Any]] = None):
     if isinstance(payload, dict) and payload.get("full_reset"):
+        restart_after_reset = payload.get("restart_cameras", True)
+        for camera_id in list(RUNNING_PROCESSES.keys()):
+            stop_detector(camera_id)
+
         init_db()
         conn = sqlite3.connect(DB_PATH, timeout=30)
         conn.execute("PRAGMA busy_timeout = 30000")
@@ -1992,6 +2013,9 @@ def maintenance_cleanup(payload: Optional[dict[str, Any]] = None):
                 path.unlink()
             except Exception:
                 pass
+
+        if restart_after_reset:
+            auto_start_cameras()
 
         return {"ok": True, "mode": "full_reset"}
 
