@@ -91,15 +91,15 @@ def draw_detection_boxes(frame, boxes):
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
         caption = f"{label} {confidence:.2f}"
-        cv2.rectangle(frame, (x1, max(0, y1 - 24)), (x1 + 118, y1), color, -1)
+        cv2.rectangle(frame, (x1, max(0, y1 - 17)), (x1 + 88, y1), color, -1)
         cv2.putText(
             frame,
             caption,
-            (x1 + 5, max(16, y1 - 7)),
+            (x1 + 4, max(12, y1 - 5)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
+            0.34,
             (0, 0, 0),
-            2,
+            1,
         )
 
     return frame
@@ -107,13 +107,13 @@ def draw_detection_boxes(frame, boxes):
 
 def annotate(frame, camera_id: str, site: str):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cv2.rectangle(frame, (0, 0), (frame.shape[1], 28), (0, 0, 0), -1)
+    cv2.rectangle(frame, (0, 0), (frame.shape[1], 20), (0, 0, 0), -1)
     cv2.putText(
         frame,
         f"{site or camera_id}  LIVE  {timestamp}",
-        (10, 19),
+        (8, 14),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.42,
+        0.31,
         (255, 255, 255),
         1,
     )
