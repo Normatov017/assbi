@@ -1464,15 +1464,19 @@ def camera_frame(camera_id: str):
 
 def mjpeg_generator(camera_id: str):
     frame_path = FRAMES_DIR / f"{camera_id}.jpg"
+    last_mtime = 0.0
 
     while True:
         if frame_path.exists():
             try:
-                frame = frame_path.read_bytes()
-                yield b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                current_mtime = frame_path.stat().st_mtime
+                if current_mtime != last_mtime:
+                    frame = frame_path.read_bytes()
+                    yield b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                    last_mtime = current_mtime
             except Exception:
                 pass
-        time.sleep(0.03)
+        time.sleep(0.12)
 
 
 @app.get("/api/stream/{camera_id}")
