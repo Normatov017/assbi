@@ -167,6 +167,12 @@ function riskLabel(value: number) {
   return "LOW";
 }
 
+function riskLevelKey(value: number) {
+  if (value >= 70) return "common.high";
+  if (value >= 35) return "common.medium";
+  return "common.low";
+}
+
 function riskBadge(value: number) {
   const level = riskLabel(value);
   if (level === "HIGH") return "bg-red-500 text-white";
@@ -178,6 +184,12 @@ function qualityBadge(value: number) {
   if (value >= 80) return "bg-green-500 text-white";
   if (value >= 50) return "bg-yellow-500 text-black";
   return "bg-red-500 text-white";
+}
+
+function apiStatusLabel(status: ApiStatus, t: (key: string) => string) {
+  if (status === "Live") return t("common.live");
+  if (status === "Offline") return t("common.offline");
+  return t("common.check");
 }
 
 function severityBadge(value?: string) {
@@ -245,12 +257,12 @@ export default function DashboardOverview() {
     } catch (err) {
       console.error("Dashboard summary error:", err);
       setApiStatus("Offline");
-      setError("Backend API bilan ulanishda muammo yuz berdi.");
+      setError(t("dashboard.backendError"));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     let alive = true;
@@ -287,20 +299,20 @@ export default function DashboardOverview() {
   const posture = useMemo(() => {
     if (Array.isArray(data?.posture) && data.posture.length > 0) return data.posture;
     return [
-      { name: "Standing", value: numberValue(kpis.standing) },
-      { name: "Sitting", value: numberValue(kpis.sitting) },
+      { name: t("live.standing"), value: numberValue(kpis.standing) },
+      { name: t("live.sitting"), value: numberValue(kpis.sitting) },
     ];
-  }, [data?.posture, kpis.standing, kpis.sitting]);
+  }, [data?.posture, kpis.standing, kpis.sitting, t]);
 
   const objectBreakdown = useMemo(() => {
     if (Array.isArray(data?.objects) && data.objects.length > 0) return data.objects;
     return [
-      { name: "Laptops", value: numberValue(kpis.laptops) },
-      { name: "Phones", value: numberValue(kpis.phones) },
-      { name: "Vehicles", value: numberValue(kpis.vehicles) },
-      { name: "Other", value: numberValue(kpis.objects) },
+      { name: t("dashboard.laptops"), value: numberValue(kpis.laptops) },
+      { name: t("dashboard.phones"), value: numberValue(kpis.phones) },
+      { name: t("dashboard.vehicles"), value: numberValue(kpis.vehicles) },
+      { name: t("dashboard.otherObjects"), value: numberValue(kpis.objects) },
     ].filter((item) => item.value > 0);
-  }, [data?.objects, kpis.laptops, kpis.phones, kpis.vehicles, kpis.objects]);
+  }, [data?.objects, kpis.laptops, kpis.phones, kpis.vehicles, kpis.objects, t]);
 
   const avgCameraFps = useMemo(() => {
     if (!cameras.length) return numberValue(kpis.fps);
@@ -352,47 +364,47 @@ export default function DashboardOverview() {
 
     if (apiStatus === "Offline") {
       return {
-        title: "Backend connection issue",
-        text: "API offline holatda. Camera API, detector process va database yozuvlarini tekshirish kerak.",
-        badge: "OFFLINE",
+        title: t("dashboard.backendIssueTitle"),
+        text: t("dashboard.backendIssueText"),
+        badge: t("common.offline"),
         badgeClass: "bg-red-500 text-white",
       };
     }
 
     if (risk >= 70 || highRiskCameras > 0) {
       return {
-        title: "High risk monitoring required",
-        text: "Risk baland. Operator live camera, incident log va alert response workflowni darhol tekshirishi kerak.",
-        badge: "HIGH RISK",
+        title: t("dashboard.highRiskTitle"),
+        text: t("dashboard.highRiskText"),
+        badge: t("common.highRisk"),
         badgeClass: "bg-red-500 text-white",
       };
     }
 
     if (offlineCameras > 0) {
       return {
-        title: "Camera connectivity issue",
-        text: "Ba’zi kameralar offline. RTSP URL, YouTube stream, local video path yoki backend detector processni tekshiring.",
-        badge: "CHECK",
+        title: t("dashboard.connectivityIssueTitle"),
+        text: t("dashboard.connectivityIssueText"),
+        badge: t("common.check"),
         badgeClass: "bg-yellow-500 text-black",
       };
     }
 
     if (avgCameraQuality < 50) {
       return {
-        title: "Stream quality needs attention",
-        text: "Camera quality past. Network, video source yoki detection interval optimizatsiya qilinishi kerak.",
-        badge: "LOW QUALITY",
+        title: t("dashboard.qualityIssueTitle"),
+        text: t("dashboard.qualityIssueText"),
+        badge: t("common.lowQuality"),
         badgeClass: "bg-yellow-500 text-black",
       };
     }
 
     return {
-      title: "System stable",
-      text: "Platform barqaror. Live monitoring, people tracking, camera health va BI analytics normal ishlayapti.",
-      badge: "STABLE",
+      title: t("dashboard.systemStableTitle"),
+      text: t("dashboard.systemStableText"),
+      badge: t("common.stable"),
       badgeClass: "bg-green-500 text-white",
     };
-  }, [apiStatus, kpis.risk_score, highRiskCameras, offlineCameras, avgCameraQuality]);
+  }, [apiStatus, kpis.risk_score, highRiskCameras, offlineCameras, avgCameraQuality, t]);
 
   const todayVisitors =
     numberValue(kpis.today_visitors) ||
@@ -440,7 +452,7 @@ export default function DashboardOverview() {
       {
         title: t("dashboard.riskScore"),
         value: formatPercent(kpis.risk_score),
-        change: riskLabel(numberValue(kpis.risk_score)),
+        change: t(riskLevelKey(numberValue(kpis.risk_score))).toUpperCase(),
         icon: ShieldAlert,
         color: "text-red-500",
         bgColor: "bg-red-500/10",
@@ -449,7 +461,7 @@ export default function DashboardOverview() {
       {
         title: t("dashboard.objects"),
         value: formatNumber(getTotalObjectsFromKpis(kpis)),
-        change: "Phones, laptops, vehicles",
+        change: t("dashboard.objectsIncluded"),
         icon: Package,
         color: "text-orange-500",
         bgColor: "bg-orange-500/10",
@@ -458,7 +470,7 @@ export default function DashboardOverview() {
       {
         title: t("dashboard.incidents"),
         value: formatNumber(kpis.incidents || incidents.length),
-        change: "Recent event cases",
+        change: t("dashboard.recentEventCases"),
         icon: AlertTriangle,
         color: "text-amber-500",
         bgColor: "bg-amber-500/10",
@@ -467,7 +479,7 @@ export default function DashboardOverview() {
       {
         title: t("dashboard.processingFps"),
         value: avgCameraFps.toFixed(1),
-        change: "Detection speed",
+        change: t("dashboard.detectionSpeed"),
         icon: Zap,
         color: "text-yellow-500",
         bgColor: "bg-yellow-500/10",
@@ -476,7 +488,7 @@ export default function DashboardOverview() {
       {
         title: t("dashboard.dataQuality"),
         value: formatPercent(avgCameraQuality),
-        change: apiStatus,
+        change: apiStatusLabel(apiStatus, t),
         icon: Activity,
         color: "text-emerald-500",
         bgColor: "bg-emerald-500/10",
@@ -514,7 +526,7 @@ export default function DashboardOverview() {
               }
             >
               {apiStatus === "Live" ? <Wifi className="size-3.5 mr-1" /> : <WifiOff className="size-3.5 mr-1" />}
-              {apiStatus}
+              {apiStatusLabel(apiStatus, t)}
             </Badge>
 
             <Badge variant="outline">
@@ -524,7 +536,7 @@ export default function DashboardOverview() {
           </div>
 
           <p className="text-muted-foreground max-w-3xl">
-            Real-time surveillance analytics, camera health monitoring, AI-based risk scoring and BI reporting overview.
+            {t("dashboard.subtitle")}
           </p>
         </div>
 
@@ -538,14 +550,14 @@ export default function DashboardOverview() {
                   timeRange === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {item === "live" ? "Live" : item === "today" ? "Today" : "Week"}
+                {item === "live" ? t("common.live") : item === "today" ? t("common.today") : t("common.week")}
               </button>
             ))}
           </div>
 
           <Button variant="outline" onClick={() => loadSummary(false)}>
             <RefreshCw className={`size-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-            Refresh
+            {t("common.refresh")}
           </Button>
         </div>
       </div>
@@ -555,7 +567,7 @@ export default function DashboardOverview() {
           <CardContent className="p-4 flex items-center gap-3">
             <AlertTriangle className="size-5 text-red-500" />
             <div>
-              <p className="font-medium text-red-600">API Error</p>
+              <p className="font-medium text-red-600">{t("dashboard.apiError")}</p>
               <p className="text-sm text-muted-foreground">{error}</p>
             </div>
           </CardContent>
@@ -594,10 +606,10 @@ export default function DashboardOverview() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="size-5 text-cyan-500" />
-                    People, Risk & Quality Trend
+                    {t("dashboard.peopleTrend")}
                   </CardTitle>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Main trend line for people flow, operational risk and stream quality.
+                    {t("dashboard.peopleTrendDesc")}
                   </p>
                 </div>
 
@@ -624,9 +636,9 @@ export default function DashboardOverview() {
                       borderRadius: 12,
                     }}
                   />
-                  <Area type="monotone" dataKey="active" stroke="#06b6d4" fillOpacity={1} fill="url(#activeGradient)" name="Active People" />
-                  <Line type="monotone" dataKey="risk" stroke="#ef4444" strokeWidth={2.5} name="Risk" />
-                  <Line type="monotone" dataKey="quality" stroke="#10b981" strokeWidth={2.5} name="Quality" />
+                  <Area type="monotone" dataKey="active" stroke="#06b6d4" fillOpacity={1} fill="url(#activeGradient)" name={t("dashboard.activePeople")} />
+                  <Line type="monotone" dataKey="risk" stroke="#ef4444" strokeWidth={2.5} name={t("common.risk")} />
+                  <Line type="monotone" dataKey="quality" stroke="#10b981" strokeWidth={2.5} name={t("common.quality")} />
                   <Bar dataKey="fps" fill="#8b5cf6" radius={[8, 8, 0, 0]} name="FPS" />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -634,9 +646,9 @@ export default function DashboardOverview() {
           </Card>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-            <ScoreGauge title={t("dashboard.platformScore")} value={platformScore} icon={Cpu} hint="Combined uptime, quality, FPS and risk score" />
-            <ScoreGauge title={t("dashboard.uptimeScore")} value={uptimeScore} icon={Wifi} hint={`${onlineCameras}/${totalCameras} cameras online`} />
-            <ScoreGauge title={t("dashboard.riskControl")} value={Math.max(0, 100 - numberValue(kpis.risk_score))} icon={ShieldAlert} hint="Higher value means lower operational risk" />
+            <ScoreGauge title={t("dashboard.platformScore")} value={platformScore} icon={Cpu} hint={t("dashboard.combinedScore")} />
+            <ScoreGauge title={t("dashboard.uptimeScore")} value={uptimeScore} icon={Wifi} hint={`${onlineCameras}/${totalCameras} ${t("dashboard.camerasOnlineHint")}`} />
+            <ScoreGauge title={t("dashboard.riskControl")} value={Math.max(0, 100 - numberValue(kpis.risk_score))} icon={ShieldAlert} hint={t("dashboard.lowerRiskHint")} />
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -650,7 +662,7 @@ export default function DashboardOverview() {
 
               <CardContent>
                 {cameras.length === 0 ? (
-                  <EmptyChart message="Camera health data mavjud emas." />
+                  <EmptyChart message={t("dashboard.noCameraHealth")} />
                 ) : (
                   <ResponsiveContainer width="100%" height={270}>
                     <BarChart data={cameras.slice(0, 8)}>
@@ -664,7 +676,7 @@ export default function DashboardOverview() {
                           borderRadius: 12,
                         }}
                       />
-                      <Bar dataKey="quality" fill="#10b981" radius={[8, 8, 0, 0]} name="Quality" />
+                      <Bar dataKey="quality" fill="#10b981" radius={[8, 8, 0, 0]} name={t("common.quality")} />
                       <Bar dataKey="fps" fill="#06b6d4" radius={[8, 8, 0, 0]} name="FPS" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -682,7 +694,7 @@ export default function DashboardOverview() {
 
               <CardContent>
                 {objectBreakdown.length === 0 ? (
-                  <EmptyChart message="Object data hali mavjud emas." />
+                  <EmptyChart message={t("dashboard.noObjectData")} />
                 ) : (
                   <ResponsiveContainer width="100%" height={270}>
                     <PieChart>
@@ -710,13 +722,13 @@ export default function DashboardOverview() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Camera className="size-5 text-blue-500" />
-                  Live Camera Operations
+                  {t("dashboard.liveCameraOperations")}
                 </CardTitle>
               </CardHeader>
 
               <CardContent className="space-y-3">
                 {cameras.length === 0 ? (
-                  <div className="text-center text-muted-foreground py-10">Camera operations data mavjud emas.</div>
+                  <div className="text-center text-muted-foreground py-10">{t("dashboard.noCameraOperations")}</div>
                 ) : (
                   cameras.slice(0, 6).map((camera) => {
                     const risk = numberValue(camera.risk_score);
@@ -732,20 +744,20 @@ export default function DashboardOverview() {
                           </div>
 
                           <Badge className={camera.running ? "bg-green-500 text-white" : "bg-red-500 text-white"}>
-                            {camera.running ? "ONLINE" : "OFFLINE"}
+                            {camera.running ? t("common.online").toUpperCase() : t("common.offline").toUpperCase()}
                           </Badge>
                         </div>
 
                         <div className="grid grid-cols-4 gap-2 text-center">
-                          <MiniMetric label="People" value={camera.active_people || 0} />
-                          <MiniMetric label="Objects" value={objects} />
+                          <MiniMetric label={t("common.people")} value={camera.active_people || 0} />
+                          <MiniMetric label={t("common.objects")} value={objects} />
                           <MiniMetric label="FPS" value={numberValue(camera.fps).toFixed(1)} />
-                          <MiniMetric label="Risk" value={`${risk.toFixed(0)}%`} />
+                          <MiniMetric label={t("common.risk")} value={`${risk.toFixed(0)}%`} />
                         </div>
 
                         <div className="mt-3 grid grid-cols-2 gap-3">
-                          <ProgressMetric label="Risk" value={risk} />
-                          <ProgressMetric label="Quality" value={quality} />
+                          <ProgressMetric label={t("common.risk")} value={risk} />
+                          <ProgressMetric label={t("common.quality")} value={quality} />
                         </div>
                       </div>
                     );
@@ -758,34 +770,35 @@ export default function DashboardOverview() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Activity className="size-5 text-emerald-500" />
-                  System Health Overview
+                  {t("dashboard.systemHealthOverview")}
                 </CardTitle>
               </CardHeader>
 
               <CardContent className="space-y-4">
-                <HealthRow label="Backend API" value={apiStatus} status={apiStatus === "Live" ? "good" : "bad"} />
-                <HealthRow label="Camera Connectivity" value={`${onlineCameras}/${totalCameras} online`} status={offlineCameras === 0 ? "good" : "warning"} />
+                <HealthRow label={t("dashboard.backendApi")} value={apiStatus === "Live" ? t("common.live") : t("common.offline")} status={apiStatus === "Live" ? "good" : "bad"} statusText={t} />
+                <HealthRow label={t("dashboard.cameraConnectivity")} value={`${onlineCameras}/${totalCameras} ${t("common.online")}`} status={offlineCameras === 0 ? "good" : "warning"} statusText={t} />
                 <HealthRow
-                  label="Average Stream Quality"
+                  label={t("dashboard.averageStreamQuality")}
                   value={formatPercent(avgCameraQuality)}
                   status={avgCameraQuality >= 70 ? "good" : avgCameraQuality >= 40 ? "warning" : "bad"}
+                  statusText={t}
                 />
-                <HealthRow label="Average FPS" value={avgCameraFps.toFixed(1)} status={avgCameraFps >= 15 ? "good" : avgCameraFps >= 7 ? "warning" : "bad"} />
-                <HealthRow label="High Risk Cameras" value={highRiskCameras} status={highRiskCameras === 0 ? "good" : "bad"} />
+                <HealthRow label={t("dashboard.averageFps")} value={avgCameraFps.toFixed(1)} status={avgCameraFps >= 15 ? "good" : avgCameraFps >= 7 ? "warning" : "bad"} statusText={t} />
+                <HealthRow label={t("dashboard.highRiskCameras")} value={highRiskCameras} status={highRiskCameras === 0 ? "good" : "bad"} statusText={t} />
 
                 <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 mt-4">
                   <div className="flex items-start gap-3">
                     <Brain className="size-5 text-blue-500 mt-0.5" />
                     <div>
-                      <p className="font-semibold">Operational Recommendation</p>
+                      <p className="font-semibold">{t("dashboard.operationalRecommendation")}</p>
                       <p className="text-sm text-muted-foreground mt-1">
                         {offlineCameras > 0
-                          ? "Some cameras are offline. Check camera source, RTSP link or backend detector process."
+                          ? t("dashboard.offlineRecommendation")
                           : highRiskCameras > 0
-                          ? "High risk detected. Review live camera and incident table immediately."
+                          ? t("dashboard.highRiskRecommendation")
                           : avgCameraQuality < 50
-                          ? "Stream quality is low. Check video source, network or detection interval."
-                          : "All major platform signals look stable. Continue normal monitoring."}
+                          ? t("dashboard.lowQualityRecommendation")
+                          : t("dashboard.stableRecommendation")}
                       </p>
                     </div>
                   </div>
@@ -798,7 +811,7 @@ export default function DashboardOverview() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <AlertTriangle className="size-5 text-amber-500" />
-                Recent Incidents
+                {t("dashboard.recentIncidents")}
               </CardTitle>
             </CardHeader>
 
@@ -807,11 +820,11 @@ export default function DashboardOverview() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Severity</TableHead>
-                      <TableHead>Camera</TableHead>
-                      <TableHead>Message</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>{t("common.type")}</TableHead>
+                      <TableHead>{t("common.severity")}</TableHead>
+                      <TableHead>{t("common.camera")}</TableHead>
+                      <TableHead>{t("common.message")}</TableHead>
+                      <TableHead>{t("common.status")}</TableHead>
                     </TableRow>
                   </TableHeader>
 
@@ -819,18 +832,18 @@ export default function DashboardOverview() {
                     {incidents.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                          No incidents yet
+                          {t("dashboard.noIncidents")}
                         </TableCell>
                       </TableRow>
                     ) : (
                       incidents.slice(0, 8).map((item, index) => (
                         <TableRow key={item.id || index}>
-                          <TableCell className="font-medium">{item.incident_type || "Unknown"}</TableCell>
+                          <TableCell className="font-medium">{item.incident_type || t("dashboard.unknown")}</TableCell>
                           <TableCell>
                             <Badge className={severityBadge(item.severity)}>{item.severity || "LOW"}</Badge>
                           </TableCell>
                           <TableCell className="font-mono">{item.camera_id || "N/A"}</TableCell>
-                          <TableCell className="max-w-md truncate text-muted-foreground">{item.message || "No message"}</TableCell>
+                          <TableCell className="max-w-md truncate text-muted-foreground">{item.message || t("dashboard.noMessage")}</TableCell>
                           <TableCell>
                             <Badge variant="outline">{item.status || "open"}</Badge>
                           </TableCell>
@@ -849,7 +862,7 @@ export default function DashboardOverview() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Brain className="size-5 text-purple-500" />
-                AI Executive Summary
+                {t("dashboard.aiExecutiveSummary")}
               </CardTitle>
             </CardHeader>
 
@@ -866,10 +879,10 @@ export default function DashboardOverview() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <MiniInsight icon={Users} label="Busiest" value={busiestCamera?.site || busiestCamera?.camera_id || "N/A"} hint={`${numberValue(busiestCamera?.active_people)} people`} />
-                <MiniInsight icon={ShieldAlert} label="Highest Risk" value={highestRiskCamera?.site || highestRiskCamera?.camera_id || "N/A"} hint={`${numberValue(highestRiskCamera?.risk_score)}% risk`} />
-                <MiniInsight icon={Wifi} label="Online" value={onlineCameras} hint="Active cameras" />
-                <MiniInsight icon={WifiOff} label="Offline" value={offlineCameras} hint="Need attention" />
+                <MiniInsight icon={Users} label={t("dashboard.busiest")} value={busiestCamera?.site || busiestCamera?.camera_id || "N/A"} hint={`${numberValue(busiestCamera?.active_people)} ${t("common.people").toLowerCase()}`} />
+                <MiniInsight icon={ShieldAlert} label={t("dashboard.highestRisk")} value={highestRiskCamera?.site || highestRiskCamera?.camera_id || "N/A"} hint={`${numberValue(highestRiskCamera?.risk_score)}% ${t("common.risk").toLowerCase()}`} />
+                <MiniInsight icon={Wifi} label={t("common.online")} value={onlineCameras} hint={t("common.activeCameras")} />
+                <MiniInsight icon={WifiOff} label={t("common.offline")} value={offlineCameras} hint={t("common.needAttention")} />
               </div>
             </CardContent>
           </Card>
@@ -911,13 +924,13 @@ export default function DashboardOverview() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="size-5 text-red-500" />
-                Risk Leaderboard
+                {t("dashboard.riskLeaderboard")}
               </CardTitle>
             </CardHeader>
 
             <CardContent className="space-y-3">
               {cameraLeaderboard.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">No camera data available</div>
+                <div className="text-center text-muted-foreground py-8">{t("dashboard.noCameraData")}</div>
               ) : (
                 cameraLeaderboard.map((camera) => {
                   const risk = numberValue(camera.risk_score);
@@ -936,7 +949,7 @@ export default function DashboardOverview() {
                       </div>
 
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>People: {camera.active_people || 0}</span>
+                        <span>{t("common.people")}: {camera.active_people || 0}</span>
                         <span>FPS: {numberValue(camera.fps).toFixed(1)}</span>
                         <span>Q: {formatPercent(camera.quality)}</span>
                       </div>
@@ -957,7 +970,7 @@ export default function DashboardOverview() {
 
             <CardContent>
               {posture.every((item) => numberValue(item.value) === 0) ? (
-                <EmptyChart message="Posture data hali mavjud emas." />
+                <EmptyChart message={t("dashboard.postureNoData")} />
               ) : (
                 <ResponsiveContainer width="100%" height={245}>
                   <PieChart>
@@ -1002,10 +1015,10 @@ export default function DashboardOverview() {
             </CardHeader>
 
             <CardContent className="grid grid-cols-2 gap-3">
-              <DeviceCard icon={Laptop} label="Laptops" value={kpis.laptops || 0} />
-              <DeviceCard icon={Smartphone} label="Phones" value={kpis.phones || 0} />
-              <DeviceCard icon={Camera} label="Vehicles" value={kpis.vehicles || 0} />
-              <DeviceCard icon={Package} label="Objects" value={kpis.objects || 0} />
+              <DeviceCard icon={Laptop} label={t("dashboard.laptops")} value={kpis.laptops || 0} />
+              <DeviceCard icon={Smartphone} label={t("dashboard.phones")} value={kpis.phones || 0} />
+              <DeviceCard icon={Camera} label={t("dashboard.vehicles")} value={kpis.vehicles || 0} />
+              <DeviceCard icon={Package} label={t("common.objects")} value={kpis.objects || 0} />
             </CardContent>
           </Card>
         </div>
@@ -1139,10 +1152,12 @@ function HealthRow({
   label,
   value,
   status,
+  statusText,
 }: {
   label: string;
   value: string | number;
   status: "good" | "warning" | "bad";
+  statusText: (key: string) => string;
 }) {
   const badgeClass =
     status === "good"
@@ -1151,7 +1166,12 @@ function HealthRow({
       ? "bg-yellow-500 text-black"
       : "bg-red-500 text-white";
 
-  const statusText = status === "good" ? "GOOD" : status === "warning" ? "CHECK" : "ISSUE";
+  const statusLabel =
+    status === "good"
+      ? statusText("common.good")
+      : status === "warning"
+      ? statusText("common.check")
+      : statusText("common.issue");
 
   return (
     <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-muted/20 p-4">
@@ -1160,7 +1180,7 @@ function HealthRow({
         <p className="text-sm text-muted-foreground">{value}</p>
       </div>
 
-      <Badge className={badgeClass}>{statusText}</Badge>
+      <Badge className={badgeClass}>{statusLabel.toUpperCase()}</Badge>
     </div>
   );
 }

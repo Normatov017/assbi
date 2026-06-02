@@ -130,8 +130,8 @@ const navigation: NavItem[] = [
 const initialNotifications: NotificationItem[] = [
   {
     id: "critical-alert",
-    title: "Critical Alert",
-    text: "High risk detected in anomaly monitoring center.",
+    title: "layout.criticalAlert",
+    text: "layout.criticalAlertText",
     time: "2 minutes ago",
     type: "critical",
     icon: AlertTriangle,
@@ -140,8 +140,8 @@ const initialNotifications: NotificationItem[] = [
   },
   {
     id: "camera-offline",
-    title: "Camera Offline",
-    text: "One camera source is not responding.",
+    title: "layout.cameraOffline",
+    text: "layout.cameraOfflineText",
     time: "15 minutes ago",
     type: "warning",
     icon: Camera,
@@ -150,8 +150,8 @@ const initialNotifications: NotificationItem[] = [
   },
   {
     id: "system-update",
-    title: "System Update",
-    text: "AI analytics summary refreshed successfully.",
+    title: "layout.systemUpdate",
+    text: "layout.systemUpdateText",
     time: "1 hour ago",
     type: "info",
     icon: Activity,
@@ -505,10 +505,10 @@ export default function DashboardLayout() {
 
               <div className="min-w-0">
                 <p className="text-xs font-medium text-foreground truncate">
-                  AI Assistant
+                  {t("layout.aiAssistant")}
                 </p>
                 <p className="text-[10px] text-muted-foreground truncate">
-                  Ready for analysis
+                  {t("layout.readyForAnalysis")}
                 </p>
               </div>
             </div>
@@ -630,7 +630,7 @@ export default function DashboardLayout() {
                   {t(currentPage.labelKey)}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
-                  Enterprise monitoring workspace
+                  {t("layout.workspace")}
                 </p>
               </div>
             </div>
@@ -707,7 +707,7 @@ export default function DashboardLayout() {
                   <div className="flex items-center justify-between gap-3 px-2 pb-3">
                     <div>
                       <p className="font-semibold text-foreground">
-                        Notifications
+                        {t("layout.notifications")}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {unreadNotifications} unread alerts
@@ -757,7 +757,7 @@ export default function DashboardLayout() {
                                   <p
                                     className={`text-sm font-medium ${styles.title}`}
                                   >
-                                    {item.title}
+                                    {t(item.title)}
                                   </p>
 
                                   {!item.read && (
@@ -766,7 +766,7 @@ export default function DashboardLayout() {
                                 </div>
 
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  {item.text}
+                                  {t(item.text)}
                                 </p>
 
                                 <p className="text-[10px] text-muted-foreground mt-2">
@@ -824,10 +824,10 @@ export default function DashboardLayout() {
 
                 <div className="text-left hidden lg:block">
                   <p className="text-sm font-medium text-foreground">
-                    Admin User
+                    {t("layout.adminUser")}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Administrator
+                    {t("layout.administrator")}
                   </p>
                 </div>
               </Button>
@@ -844,7 +844,7 @@ export default function DashboardLayout() {
 
                     <div className="min-w-0">
                       <p className="font-semibold truncate text-foreground">
-                        Admin User
+                        {t("layout.adminUser")}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
                         admin@assbi.local
@@ -862,7 +862,7 @@ export default function DashboardLayout() {
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-foreground hover:bg-accent hover:text-accent-foreground text-left transition"
                   >
                     <User className="size-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Profile</span>
+                    <span className="text-sm font-medium">{t("layout.profile")}</span>
                   </button>
 
                   <button
@@ -873,7 +873,7 @@ export default function DashboardLayout() {
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-foreground hover:bg-accent hover:text-accent-foreground text-left transition"
                   >
                     <Settings className="size-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Settings</span>
+                    <span className="text-sm font-medium">{t("layout.settings")}</span>
                   </button>
 
                   <button
@@ -884,15 +884,15 @@ export default function DashboardLayout() {
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-foreground hover:bg-accent hover:text-accent-foreground text-left transition"
                   >
                     <ShieldCheck className="size-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Security</span>
+                    <span className="text-sm font-medium">{t("layout.security")}</span>
                   </button>
 
                   <div className="my-3 border-t border-border/50" />
 
                   <div className="rounded-xl border border-green-500/25 bg-green-500/10 p-3 mb-3">
-                    <p className="text-xs text-muted-foreground">Session</p>
+                    <p className="text-xs text-muted-foreground">{t("layout.session")}</p>
                     <p className="text-sm font-semibold text-green-500">
-                      Active administrator access
+                      {t("layout.activeAccess")}
                     </p>
                   </div>
 
@@ -901,7 +901,7 @@ export default function DashboardLayout() {
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-500 hover:bg-red-500/10 text-left transition"
                   >
                     <LogOut className="size-4" />
-                    <span className="text-sm font-medium">Logout</span>
+                    <span className="text-sm font-medium">{t("layout.logout")}</span>
                   </button>
                 </div>
               )}

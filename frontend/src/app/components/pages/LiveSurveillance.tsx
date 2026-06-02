@@ -40,6 +40,7 @@ import {
   TableRow,
 } from "../ui/table";
 import { API_BASE as API } from "../../lib/config";
+import { useI18n } from "../../lib/i18n";
 
 interface CameraType {
   camera_id: string;
@@ -50,6 +51,7 @@ interface CameraType {
   enabled?: boolean;
   running?: boolean;
   frame_url?: string;
+  stream_url?: string;
   active_people?: number;
   total_unique?: number;
   today_visitors?: number;
@@ -94,6 +96,12 @@ function riskLabel(value: number) {
   if (value >= 70) return "HIGH";
   if (value >= 35) return "MEDIUM";
   return "LOW";
+}
+
+function riskLevelKey(value: number) {
+  if (value >= 70) return "common.high";
+  if (value >= 35) return "common.medium";
+  return "common.low";
 }
 
 function riskBadge(value: number) {
@@ -220,18 +228,18 @@ function eventStyle(severity: CameraEvent["severity"]) {
   };
 }
 
-function makeCameraEvents(cameras: CameraType[]): CameraEvent[] {
+function makeCameraEvents(cameras: CameraType[], t: (key: string) => string): CameraEvent[] {
   const events: CameraEvent[] = [];
 
   cameras.forEach((camera, index) => {
     if (!camera.running) {
       events.push({
         id: `offline-${camera.camera_id}`,
-        title: "Camera Offline",
-        message: `${camera.site || camera.camera_id} stream javob bermayapti.`,
+        title: t("live.eventCameraOffline"),
+        message: `${camera.site || camera.camera_id} ${t("live.eventCameraOfflineText")}`,
         camera_id: camera.camera_id,
         severity: "critical",
-        time: `${index + 1} min ago`,
+        time: `${index + 1} ${t("common.minutesAgo")}`,
         icon: WifiOff,
       });
     }
@@ -239,11 +247,11 @@ function makeCameraEvents(cameras: CameraType[]): CameraEvent[] {
     if (numberValue(camera.risk_score) >= 70) {
       events.push({
         id: `risk-${camera.camera_id}`,
-        title: "High Risk Camera",
-        message: `Risk score ${formatPercent(camera.risk_score)} ga chiqdi.`,
+        title: t("live.eventHighRisk"),
+        message: `${t("live.eventRiskScore")} ${formatPercent(camera.risk_score)} ga chiqdi.`,
         camera_id: camera.camera_id,
         severity: "warning",
-        time: `${index + 2} min ago`,
+        time: `${index + 2} ${t("common.minutesAgo")}`,
         icon: ShieldAlert,
       });
     }
@@ -251,13 +259,13 @@ function makeCameraEvents(cameras: CameraType[]): CameraEvent[] {
     if (numberValue(camera.quality) > 0 && numberValue(camera.quality) < 50) {
       events.push({
         id: `quality-${camera.camera_id}`,
-        title: "Low Stream Quality",
+        title: t("live.eventLowQuality"),
         message: `Stream quality ${formatPercent(
           camera.quality
-        )}. Video source tekshirish kerak.`,
+        )}. ${t("live.eventQualityText")}`,
         camera_id: camera.camera_id,
         severity: "warning",
-        time: `${index + 3} min ago`,
+        time: `${index + 3} ${t("common.minutesAgo")}`,
         icon: Signal,
       });
     }
@@ -265,13 +273,13 @@ function makeCameraEvents(cameras: CameraType[]): CameraEvent[] {
     if (numberValue(camera.fps) > 0 && numberValue(camera.fps) < 6) {
       events.push({
         id: `fps-${camera.camera_id}`,
-        title: "Low FPS",
+        title: t("live.eventLowFps"),
         message: `Detection FPS ${numberValue(camera.fps).toFixed(
           1
-        )}. Processing sekinlashgan.`,
+        )}. ${t("live.eventFpsText")}`,
         camera_id: camera.camera_id,
         severity: "info",
-        time: `${index + 4} min ago`,
+        time: `${index + 4} ${t("common.minutesAgo")}`,
         icon: Zap,
       });
     }
@@ -280,11 +288,11 @@ function makeCameraEvents(cameras: CameraType[]): CameraEvent[] {
   if (events.length === 0 && cameras.length > 0) {
     events.push({
       id: "stable",
-      title: "Camera Monitoring Stable",
-      message: "Hamma asosiy kamera signallari normal holatda.",
+      title: t("live.monitoringStableTitle"),
+      message: t("live.eventStableText"),
       camera_id: "system",
       severity: "success",
-      time: "now",
+      time: t("common.now"),
       icon: CheckCircle2,
     });
   }
@@ -293,6 +301,7 @@ function makeCameraEvents(cameras: CameraType[]): CameraEvent[] {
 }
 
 export default function LiveSurveillance() {
+  const { t } = useI18n();
   const [cameras, setCameras] = useState<CameraType[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState("");
   const [focusOpen, setFocusOpen] = useState(false);
@@ -338,12 +347,12 @@ export default function LiveSurveillance() {
       });
     } catch (err) {
       console.error("Live surveillance API error:", err);
-      setError("Camera API bilan ulanishda muammo yuz berdi.");
+      setError(t("live.cameraApiErrorText"));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadCameras(false);
@@ -467,7 +476,7 @@ export default function LiveSurveillance() {
     });
   }, [selectedCameraId]);
 
-  const cameraEvents = useMemo(() => makeCameraEvents(cameras), [cameras]);
+  const cameraEvents = useMemo(() => makeCameraEvents(cameras, t), [cameras, t]);
 
   const selectedFrameUrl = getFrameUrl(selectedCamera);
   const selectedStreamUrl = getStreamUrl(selectedCamera);
@@ -476,56 +485,56 @@ export default function LiveSurveillance() {
   const operatorInsight = useMemo(() => {
     if (error) {
       return {
-        title: "Camera API offline",
-        text: "Backend camera endpoint javob bermayapti. api_server.py va detector processni tekshiring.",
-        badge: "API ISSUE",
+        title: t("live.apiOfflineTitle"),
+        text: t("live.apiOfflineText"),
+        badge: t("common.issue"),
         badgeClass: "bg-red-500 text-white",
       };
     }
 
     if (!selectedCamera) {
       return {
-        title: "No camera selected",
-        text: "Monitoring uchun kamera qo‘shish yoki camera API dan ma’lumot olish kerak.",
-        badge: "NO DATA",
+        title: t("live.noCameraSelected"),
+        text: t("live.noDataText"),
+        badge: t("common.no"),
         badgeClass: "bg-yellow-500 text-black",
       };
     }
 
     if (!selectedCamera.running) {
       return {
-        title: "Selected camera offline",
-        text: "Kamera stream ishlamayapti. Source URL, local path yoki detector processni tekshiring.",
-        badge: "OFFLINE",
+        title: t("live.selectedOfflineTitle"),
+        text: t("live.selectedOfflineText"),
+        badge: t("common.offline"),
         badgeClass: "bg-red-500 text-white",
       };
     }
 
     if (numberValue(selectedCamera.risk_score) >= 70) {
       return {
-        title: "Selected camera needs attention",
-        text: "Ushbu kamerada risk yuqori. Live feed, object overlay va anomaly eventlarni tekshirish kerak.",
-        badge: "HIGH RISK",
+        title: t("live.selectedRiskTitle"),
+        text: t("live.selectedRiskText"),
+        badge: t("common.highRisk"),
         badgeClass: "bg-red-500 text-white",
       };
     }
 
     if (numberValue(selectedCamera.quality) < 50) {
       return {
-        title: "Stream quality issue",
-        text: "Video quality past. Network, source resolution yoki detect intervalni optimizatsiya qiling.",
-        badge: "LOW QUALITY",
+        title: t("live.streamQualityIssueTitle"),
+        text: t("live.streamQualityIssueText"),
+        badge: t("common.lowQuality"),
         badgeClass: "bg-yellow-500 text-black",
       };
     }
 
     return {
-      title: "Camera monitoring stable",
-      text: "Tanlangan kamera normal ishlayapti. FPS, quality va risk nazorat ostida.",
-      badge: "STABLE",
+      title: t("live.monitoringStableTitle"),
+      text: t("live.monitoringStableText"),
+      badge: t("common.stable"),
       badgeClass: "bg-green-500 text-white",
     };
-  }, [error, selectedCamera]);
+  }, [error, selectedCamera, t]);
 
   function exportSnapshot() {
     if (!selectedCamera) return;
@@ -543,7 +552,7 @@ export default function LiveSurveillance() {
         <div>
           <div className="flex flex-wrap items-center gap-3 mb-2">
             <h1 className="text-3xl font-semibold text-foreground">
-              Camera Operator Workspace
+              {t("live.title")}
             </h1>
 
             <Badge
@@ -554,7 +563,7 @@ export default function LiveSurveillance() {
               }
             >
               <Radio className="size-3.5 mr-1" />
-              {isMonitoring ? "Monitoring Active" : "Monitoring Paused"}
+              {isMonitoring ? t("live.monitoringActive") : t("live.monitoringPaused")}
             </Badge>
 
             <Badge variant="outline" className="text-foreground">
@@ -564,8 +573,7 @@ export default function LiveSurveillance() {
           </div>
 
           <p className="text-muted-foreground max-w-4xl">
-            Live camera feed, source health, frame diagnostics and per-camera
-            object visibility for operators.
+            {t("live.subtitle")}
           </p>
         </div>
 
@@ -579,24 +587,24 @@ export default function LiveSurveillance() {
             ) : (
               <Play className="size-4 mr-2" />
             )}
-            {isMonitoring ? "Pause Monitoring" : "Start Monitoring"}
+            {isMonitoring ? t("live.pauseMonitoring") : t("live.startMonitoring")}
           </Button>
 
           <Button variant="outline" onClick={() => loadCameras(false)}>
             <RefreshCw
               className={`size-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
             />
-            Refresh
+            {t("common.refresh")}
           </Button>
 
           <Button variant="outline" onClick={exportSnapshot}>
             <Download className="size-4 mr-2" />
-            Snapshot
+            {t("live.snapshot")}
           </Button>
 
           <Button variant="outline" onClick={exportCameraReport}>
             <Download className="size-4 mr-2" />
-            Camera Report
+            {t("live.cameraReport")}
           </Button>
         </div>
       </div>
@@ -606,7 +614,7 @@ export default function LiveSurveillance() {
           <CardContent className="p-4 flex items-center gap-3">
             <AlertTriangle className="size-5 text-red-500" />
             <div>
-              <p className="font-semibold text-red-500">Camera API Error</p>
+              <p className="font-semibold text-red-500">{t("live.cameraApiError")}</p>
               <p className="text-sm text-muted-foreground">{error}</p>
             </div>
           </CardContent>
@@ -617,12 +625,12 @@ export default function LiveSurveillance() {
         <CardContent className="p-5">
           <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 items-center">
             <div className="xl:col-span-2">
-              <p className="text-sm text-muted-foreground">Selected Camera</p>
+              <p className="text-sm text-muted-foreground">{t("live.selectedCamera")}</p>
               <h2 className="text-2xl font-semibold text-foreground">
-                {selectedCamera?.site || "No camera selected"}
+                {selectedCamera?.site || t("live.noCameraSelected")}
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                {selectedCamera?.camera_id || "Camera ID"} •{" "}
+                {selectedCamera?.camera_id || t("live.cameraId")} •{" "}
                 {cameraSourceLabel(selectedCamera?.type)} •{" "}
                 {selectedCamera?.speed_mode || "normal"}
               </p>
@@ -630,8 +638,8 @@ export default function LiveSurveillance() {
 
             <div className="grid grid-cols-2 md:grid-cols-4 xl:col-span-2 gap-3">
               <MiniCameraStatus
-                label="Status"
-                value={selectedCamera?.running ? "Online" : "Offline"}
+                label={t("common.status")}
+                value={selectedCamera?.running ? t("common.online") : t("common.offline")}
                 tone={selectedCamera?.running ? "good" : "bad"}
               />
               <MiniCameraStatus
@@ -640,7 +648,7 @@ export default function LiveSurveillance() {
                 tone="info"
               />
               <MiniCameraStatus
-                label="Quality"
+                label={t("common.quality")}
                 value={formatPercent(selectedCamera?.quality)}
                 tone={
                   numberValue(selectedCamera?.quality) >= 70
@@ -651,7 +659,7 @@ export default function LiveSurveillance() {
                 }
               />
               <MiniCameraStatus
-                label="Risk"
+                label={t("common.risk")}
                 value={formatPercent(selectedCamera?.risk_score)}
                 tone={
                   numberValue(selectedCamera?.risk_score) >= 70
@@ -679,13 +687,13 @@ export default function LiveSurveillance() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <CardTitle className="text-2xl text-foreground">
-                        {selectedCamera?.site || "No camera selected"}
+                        {selectedCamera?.site || t("live.noCameraSelected")}
                       </CardTitle>
 
                       {selectedCamera && (
                         <>
                           <Badge className={statusBadge(selectedCamera.running)}>
-                            {selectedCamera.running ? "LIVE" : "OFFLINE"}
+                            {selectedCamera.running ? t("common.live").toUpperCase() : t("common.offline").toUpperCase()}
                           </Badge>
 
                           <Badge
@@ -693,8 +701,8 @@ export default function LiveSurveillance() {
                               numberValue(selectedCamera.risk_score)
                             )}
                           >
-                            RISK{" "}
-                            {riskLabel(numberValue(selectedCamera.risk_score))}
+                            {t("common.risk").toUpperCase()}{" "}
+                            {t(riskLevelKey(numberValue(selectedCamera.risk_score))).toUpperCase()}
                           </Badge>
 
                           <Badge
@@ -702,7 +710,7 @@ export default function LiveSurveillance() {
                               numberValue(selectedCamera.quality)
                             )}
                           >
-                            QUALITY {formatPercent(selectedCamera.quality)}
+                            {t("common.quality").toUpperCase()} {formatPercent(selectedCamera.quality)}
                           </Badge>
 
                           <Badge variant="outline" className="text-foreground">
@@ -713,8 +721,8 @@ export default function LiveSurveillance() {
                     </div>
 
                     <p className="text-sm text-muted-foreground mt-1">
-                      {selectedCamera?.camera_id || "Select a camera"} •{" "}
-                      {cameraSourceLabel(selectedCamera?.type)} source • refreshed{" "}
+                      {selectedCamera?.camera_id || t("live.selectCamera")} •{" "}
+                      {cameraSourceLabel(selectedCamera?.type)} {t("live.source")} • {t("live.refreshed")}{" "}
                       {lastUpdated.toLocaleTimeString()}
                     </p>
                   </div>
@@ -726,7 +734,7 @@ export default function LiveSurveillance() {
                   onClick={() => setFocusOpen(true)}
                 >
                   <Maximize2 className="size-4 mr-2" />
-                  Focus View
+                  {t("live.focusView")}
                 </Button>
               </div>
             </CardHeader>
@@ -734,23 +742,23 @@ export default function LiveSurveillance() {
             <CardContent className="p-5">
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
                 <MetricBox
-                  label="Live People"
+                  label={t("live.livePeople")}
                   value={selectedCamera?.active_people || 0}
                 />
                 <MetricBox
-                  label="Today Visitors"
+                  label={t("live.todayVisitors")}
                   value={formatNumber(getTodayVisitors(selectedCamera))}
                 />
                 <MetricBox
-                  label="Total Unique"
+                  label={t("live.totalUnique")}
                   value={formatNumber(selectedCamera?.total_unique)}
                 />
                 <MetricBox
-                  label="Standing"
+                  label={t("live.standing")}
                   value={selectedCamera?.standing || 0}
                 />
                 <MetricBox
-                  label="Sitting"
+                  label={t("live.sitting")}
                   value={selectedCamera?.sitting || 0}
                 />
               </div>
@@ -783,11 +791,10 @@ export default function LiveSurveillance() {
                   <div className="text-center p-10">
                     <Camera className="size-14 mx-auto text-muted-foreground mb-4" />
                     <p className="text-lg font-semibold text-white">
-                      Camera frame not available
+                      {t("live.frameUnavailable")}
                     </p>
                     <p className="text-sm text-white/60 mt-2">
-                      Camera API ishlayotganini va frame_url qaytayotganini
-                      tekshiring.
+                      {t("live.frameUnavailableHint")}
                     </p>
                   </div>
                 )}
@@ -796,7 +803,7 @@ export default function LiveSurveillance() {
                   <>
                     <div className="absolute left-4 top-4 flex flex-col gap-2">
                       <Badge className="bg-red-500 text-white">
-                        LIVE STREAM
+                        {t("live.liveStream").toUpperCase()}
                       </Badge>
 
                       <Badge className="bg-black/70 text-white">
@@ -804,7 +811,7 @@ export default function LiveSurveillance() {
                       </Badge>
 
                       <Badge className="bg-black/70 text-white">
-                        QUALITY {formatPercent(selectedCamera.quality)}
+                        {t("common.quality").toUpperCase()} {formatPercent(selectedCamera.quality)}
                       </Badge>
                     </div>
 
@@ -818,29 +825,29 @@ export default function LiveSurveillance() {
                           numberValue(selectedCamera.risk_score)
                         )}
                       >
-                        {formatPercent(selectedCamera.risk_score)} RISK
+                        {formatPercent(selectedCamera.risk_score)} {t("common.risk").toUpperCase()}
                       </Badge>
                     </div>
 
                     <div className="absolute left-4 right-4 bottom-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
                       <OverlayMetric
-                        label="People"
+                        label={t("common.people")}
                         value={selectedCamera.active_people || 0}
                       />
                       <OverlayMetric
-                        label="Today"
+                        label={t("live.today")}
                         value={formatNumber(getTodayVisitors(selectedCamera))}
                       />
                       <OverlayMetric
-                        label="Total"
+                        label={t("live.total")}
                         value={formatNumber(selectedCamera.total_unique)}
                       />
                       <OverlayMetric
-                        label="Standing"
+                        label={t("live.standing")}
                         value={selectedCamera.standing || 0}
                       />
                       <OverlayMetric
-                        label="Sitting"
+                        label={t("live.sitting")}
                         value={selectedCamera.sitting || 0}
                       />
                     </div>
@@ -852,22 +859,22 @@ export default function LiveSurveillance() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
                   <DeviceBox
                     icon={Laptop}
-                    label="Laptops"
+                    label={t("dashboard.laptops")}
                     value={selectedCamera.laptops || 0}
                   />
                   <DeviceBox
                     icon={Smartphone}
-                    label="Phones"
+                    label={t("dashboard.phones")}
                     value={selectedCamera.phones || 0}
                   />
                   <DeviceBox
                     icon={Car}
-                    label="Vehicles"
+                    label={t("dashboard.vehicles")}
                     value={selectedCamera.vehicles || 0}
                   />
                   <DeviceBox
                     icon={Package}
-                    label="Other Objects"
+                    label={t("dashboard.otherObjects")}
                     value={selectedCamera.objects || 0}
                   />
                 </div>
@@ -880,7 +887,7 @@ export default function LiveSurveillance() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-foreground">
                   <Signal className="size-5 text-blue-500" />
-                  Camera Diagnostics
+                  {t("live.cameraDiagnostics")}
                 </CardTitle>
               </CardHeader>
 
@@ -888,39 +895,39 @@ export default function LiveSurveillance() {
                 {selectedCamera ? (
                   <>
                     <ProgressMetric
-                      label="Stream Quality"
+                      label={t("live.streamQuality")}
                       value={numberValue(selectedCamera.quality)}
                     />
                     <ProgressMetric
-                      label="Risk Level"
+                      label={t("live.riskLevel")}
                       value={numberValue(selectedCamera.risk_score)}
                     />
                     <ProgressMetric
-                      label="FPS Efficiency"
+                      label={t("live.fpsEfficiency")}
                       value={Math.min(100, numberValue(selectedCamera.fps) * 5)}
                     />
 
                     <div className="grid grid-cols-2 gap-3">
                       <MetricBox
-                        label="Camera Type"
+                        label={t("live.cameraType")}
                         value={cameraSourceLabel(selectedCamera.type)}
                       />
                       <MetricBox
-                        label="Speed Mode"
+                        label={t("live.speedMode")}
                         value={selectedCamera.speed_mode || "normal"}
                       />
                       <MetricBox
-                        label="Enabled"
-                        value={selectedCamera.enabled === false ? "No" : "Yes"}
+                        label={t("live.enabled")}
+                        value={selectedCamera.enabled === false ? t("common.no") : t("common.yes")}
                       />
                       <MetricBox
-                        label="Status"
-                        value={selectedCamera.running ? "Online" : "Offline"}
+                        label={t("common.status")}
+                        value={selectedCamera.running ? t("common.online") : t("common.offline")}
                       />
                     </div>
                   </>
                 ) : (
-                  <EmptyBox message="Camera tanlanmagan." />
+                  <EmptyBox message={t("live.noCameraSelected")} />
                 )}
               </CardContent>
             </Card>
@@ -929,13 +936,13 @@ export default function LiveSurveillance() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-foreground">
                   <Activity className="size-5 text-purple-500" />
-                  Camera Events
+                  {t("live.cameraEvents")}
                 </CardTitle>
               </CardHeader>
 
               <CardContent className="space-y-3">
                 {cameraEvents.length === 0 ? (
-                  <EmptyBox message="Camera event mavjud emas." />
+                  <EmptyBox message={t("live.noCameraEvents")} />
                 ) : (
                   cameraEvents.map((event) => {
                     const Icon = event.icon;
@@ -981,7 +988,7 @@ export default function LiveSurveillance() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-foreground">
                 <Camera className="size-5 text-blue-500" />
-                Camera Operations Table
+                {t("live.cameraOperationsTable")}
               </CardTitle>
             </CardHeader>
 
@@ -990,14 +997,14 @@ export default function LiveSurveillance() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Camera</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>People</TableHead>
-                      <TableHead>Objects</TableHead>
+                      <TableHead>{t("common.camera")}</TableHead>
+                      <TableHead>{t("common.status")}</TableHead>
+                      <TableHead>{t("common.source")}</TableHead>
+                      <TableHead>{t("common.people")}</TableHead>
+                      <TableHead>{t("common.objects")}</TableHead>
                       <TableHead>FPS</TableHead>
-                      <TableHead>Quality</TableHead>
-                      <TableHead>Risk</TableHead>
+                      <TableHead>{t("common.quality")}</TableHead>
+                      <TableHead>{t("common.risk")}</TableHead>
                     </TableRow>
                   </TableHeader>
 
@@ -1008,7 +1015,7 @@ export default function LiveSurveillance() {
                           colSpan={8}
                           className="text-center text-muted-foreground py-8"
                         >
-                          Camera topilmadi.
+                          {t("live.cameraNotFound")}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -1031,7 +1038,7 @@ export default function LiveSurveillance() {
 
                           <TableCell>
                             <Badge className={statusBadge(camera.running)}>
-                              {camera.running ? "ONLINE" : "OFFLINE"}
+                              {camera.running ? t("common.online").toUpperCase() : t("common.offline").toUpperCase()}
                             </Badge>
                           </TableCell>
 
@@ -1081,7 +1088,7 @@ export default function LiveSurveillance() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-foreground">
                 <Filter className="size-5 text-blue-500" />
-                Camera Filters
+                {t("live.cameraFilters")}
               </CardTitle>
             </CardHeader>
 
@@ -1091,14 +1098,14 @@ export default function LiveSurveillance() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Camera, site yoki type qidirish..."
+                  placeholder={t("live.searchPlaceholder")}
                   className="w-full h-11 rounded-xl border border-border bg-background pl-10 pr-4 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-blue-500/30"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-2">Filter</p>
+                  <p className="text-sm text-muted-foreground mb-2">{t("common.filter")}</p>
                   <select
                     value={filterMode}
                     onChange={(e) =>
@@ -1106,37 +1113,37 @@ export default function LiveSurveillance() {
                     }
                     className="w-full h-11 rounded-xl border border-border bg-background px-3 text-foreground outline-none"
                   >
-                    <option value="all">All Cameras</option>
-                    <option value="online">Online</option>
-                    <option value="offline">Offline</option>
-                    <option value="high-risk">High Risk</option>
-                    <option value="low-quality">Low Quality</option>
+                    <option value="all">{t("common.allCameras")}</option>
+                    <option value="online">{t("common.online")}</option>
+                    <option value="offline">{t("common.offline")}</option>
+                    <option value="high-risk">{t("common.highRisk")}</option>
+                    <option value="low-quality">{t("common.lowQuality")}</option>
                   </select>
                 </div>
 
                 <div>
-                  <p className="text-sm text-muted-foreground mb-2">Sort</p>
+                  <p className="text-sm text-muted-foreground mb-2">{t("common.sort")}</p>
                   <select
                     value={sortMode}
                     onChange={(e) => setSortMode(e.target.value as SortMode)}
                     className="w-full h-11 rounded-xl border border-border bg-background px-3 text-foreground outline-none"
                   >
-                    <option value="risk">Risk</option>
-                    <option value="people">People</option>
+                    <option value="risk">{t("common.risk")}</option>
+                    <option value="people">{t("common.people")}</option>
                     <option value="fps">FPS</option>
-                    <option value="quality">Quality</option>
-                    <option value="name">Name</option>
+                    <option value="quality">{t("common.quality")}</option>
+                    <option value="name">{t("common.name")}</option>
                   </select>
                 </div>
               </div>
 
               <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
-                <p className="text-sm text-muted-foreground">Filtered Result</p>
+                <p className="text-sm text-muted-foreground">{t("live.filteredResult")}</p>
                 <p className="text-3xl font-semibold text-foreground mt-1">
                   {filteredCameras.length}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Current search / filter / sort natijasi
+                  {t("live.currentFilterResult")}
                 </p>
               </div>
             </CardContent>
@@ -1147,7 +1154,7 @@ export default function LiveSurveillance() {
               <div className="flex items-center justify-between gap-3">
                 <CardTitle className="flex items-center gap-2 text-foreground">
                   <Camera className="size-5 text-green-500" />
-                  Camera List
+                  {t("live.cameraList")}
                 </CardTitle>
 
                 <Badge variant="outline" className="text-foreground">
@@ -1158,7 +1165,7 @@ export default function LiveSurveillance() {
 
             <CardContent className="space-y-2 max-h-[560px] overflow-y-auto pr-2">
               {filteredCameras.length === 0 ? (
-                <EmptyBox message="Camera topilmadi." />
+                <EmptyBox message={t("live.cameraNotFound")} />
               ) : (
                 sidebarCameras.map((camera) => {
                   const active =
@@ -1195,7 +1202,7 @@ export default function LiveSurveillance() {
                                 </p>
                                 {active && (
                                   <Badge className="bg-blue-500 text-white">
-                                    SELECTED
+                                    {t("common.selected").toUpperCase()}
                                   </Badge>
                                 )}
                               </div>
@@ -1205,17 +1212,17 @@ export default function LiveSurveillance() {
                             </div>
 
                             <Badge className={statusBadge(camera.running)}>
-                              {camera.running ? "ONLINE" : "OFFLINE"}
+                              {camera.running ? t("common.online").toUpperCase() : t("common.offline").toUpperCase()}
                             </Badge>
                           </div>
 
                           <div className="mt-3 grid grid-cols-4 gap-2 text-center">
                             <TinyMetric
-                              label="People"
+                              label={t("common.people")}
                               value={camera.active_people || 0}
                             />
                             <TinyMetric
-                              label="Obj"
+                              label={t("common.obj")}
                               value={getTotalObjects(camera)}
                             />
                             <TinyMetric
@@ -1223,7 +1230,7 @@ export default function LiveSurveillance() {
                               value={numberValue(camera.fps).toFixed(1)}
                             />
                             <TinyMetric
-                              label="Risk"
+                              label={t("common.risk")}
                               value={formatPercent(camera.risk_score)}
                               tone={
                                 numberValue(camera.risk_score) >= 70
@@ -1257,7 +1264,7 @@ export default function LiveSurveillance() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-foreground">
                 <Activity className="size-5 text-purple-500" />
-                AI Camera Insight
+                {t("live.aiCameraInsight")}
               </CardTitle>
             </CardHeader>
 
@@ -1282,19 +1289,19 @@ export default function LiveSurveillance() {
               {selectedCamera && (
                 <div className="grid grid-cols-2 gap-3">
                   <MetricBox
-                    label="Selected FPS"
+                    label={t("live.selectedFps")}
                     value={numberValue(selectedCamera.fps).toFixed(1)}
                   />
                   <MetricBox
-                    label="Selected Quality"
+                    label={t("live.selectedQuality")}
                     value={formatPercent(selectedCamera.quality)}
                   />
                   <MetricBox
-                    label="Selected Risk"
+                    label={t("live.selectedRisk")}
                     value={formatPercent(selectedCamera.risk_score)}
                   />
                   <MetricBox
-                    label="Selected Objects"
+                    label={t("live.selectedObjects")}
                     value={getTotalObjects(selectedCamera)}
                   />
                 </div>
@@ -1318,7 +1325,7 @@ export default function LiveSurveillance() {
                       {selectedCamera.site || selectedCamera.camera_id}
                     </h2>
                     <p className="text-xs sm:text-sm text-white/55 truncate">
-                      {selectedCamera.camera_id} • {cameraSourceLabel(selectedCamera.type)} • refreshed {lastUpdated.toLocaleTimeString()}
+                      {selectedCamera.camera_id} • {cameraSourceLabel(selectedCamera.type)} • {t("live.refreshed")} {lastUpdated.toLocaleTimeString()}
                     </p>
                   </div>
                 </div>
@@ -1326,10 +1333,10 @@ export default function LiveSurveillance() {
 
               <div className="flex items-center gap-2">
                 <Badge className={statusBadge(selectedCamera.running)}>
-                  {selectedCamera.running ? "LIVE" : "OFFLINE"}
+                  {selectedCamera.running ? t("common.live").toUpperCase() : t("common.offline").toUpperCase()}
                 </Badge>
                 <Badge className={riskBadge(numberValue(selectedCamera.risk_score))}>
-                  {formatPercent(selectedCamera.risk_score)} RISK
+                  {formatPercent(selectedCamera.risk_score)} {t("common.risk").toUpperCase()}
                 </Badge>
                 <Button
                   variant="outline"
@@ -1362,16 +1369,16 @@ export default function LiveSurveillance() {
               ) : (
                 <div className="text-center">
                   <WifiOff className="size-12 mx-auto mb-3 text-white/45" />
-                  <p className="text-lg font-semibold">No live stream available</p>
+                  <p className="text-lg font-semibold">{t("live.noLiveStream")}</p>
                 </div>
               )}
 
               <div className="absolute left-4 right-4 bottom-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <OverlayMetric label="Live" value={selectedCamera.active_people || 0} />
-                <OverlayMetric label="Today" value={formatNumber(getTodayVisitors(selectedCamera))} />
-                <OverlayMetric label="Total" value={formatNumber(selectedCamera.total_unique)} />
-                <OverlayMetric label="Standing" value={selectedCamera.standing || 0} />
-                <OverlayMetric label="Objects" value={getTotalObjects(selectedCamera)} />
+                <OverlayMetric label={t("common.live")} value={selectedCamera.active_people || 0} />
+                <OverlayMetric label={t("live.today")} value={formatNumber(getTodayVisitors(selectedCamera))} />
+                <OverlayMetric label={t("live.total")} value={formatNumber(selectedCamera.total_unique)} />
+                <OverlayMetric label={t("live.standing")} value={selectedCamera.standing || 0} />
+                <OverlayMetric label={t("common.objects")} value={getTotalObjects(selectedCamera)} />
                 <OverlayMetric label="FPS" value={numberValue(selectedCamera.fps).toFixed(1)} />
               </div>
             </div>
