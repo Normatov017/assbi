@@ -546,7 +546,15 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     ]
 
     if lightweight:
-        cmd.extend(["--interval", "1.5"])
+        if is_rtsp_source(url):
+            cmd.extend([
+                "--width", "960",
+                "--height", "540",
+                "--interval", "0.12",
+                "--crop-top-ratio", "0.13",
+            ])
+        else:
+            cmd.extend(["--interval", "0.25"])
     else:
         cmd.extend(["--clean-ui", "--speed-mode", speed_mode])
 

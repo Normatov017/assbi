@@ -136,12 +136,14 @@ def start_camera(camera, api_url, env):
         "--site",
         site,
         "--width",
-        "640",
+        "960",
         "--height",
-        "360",
+        "540",
         "--interval",
         "0.18",
     ]
+    if url.lower().startswith("rtsp://"):
+        grabber_cmd.extend(["--crop-top-ratio", "0.13"])
 
     relay_cmd = [
         sys.executable,

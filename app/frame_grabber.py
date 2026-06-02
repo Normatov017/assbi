@@ -107,15 +107,15 @@ def draw_detection_boxes(frame, boxes):
 
 def annotate(frame, camera_id: str, site: str):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cv2.rectangle(frame, (0, 0), (frame.shape[1], 48), (0, 0, 0), -1)
+    cv2.rectangle(frame, (0, 0), (frame.shape[1], 28), (0, 0, 0), -1)
     cv2.putText(
         frame,
         f"{site or camera_id}  LIVE  {timestamp}",
-        (16, 31),
+        (10, 19),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.65,
+        0.42,
         (255, 255, 255),
-        2,
+        1,
     )
     return frame
 
@@ -128,6 +128,7 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
     parser.add_argument("--interval", type=float, default=1.0)
+    parser.add_argument("--crop-top-ratio", type=float, default=0.0)
     args = parser.parse_args()
 
     while True:
@@ -142,6 +143,11 @@ def main() -> None:
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     raise RuntimeError("Video frame could not be read")
+
+                if args.crop_top_ratio > 0:
+                    crop_pixels = int(frame.shape[0] * min(max(args.crop_top_ratio, 0.0), 0.4))
+                    if 0 < crop_pixels < frame.shape[0] - 40:
+                        frame = frame[crop_pixels:, :]
 
                 frame = cv2.resize(frame, (args.width, args.height))
                 frame = draw_detection_boxes(frame, load_recent_boxes(args.camera_id))
