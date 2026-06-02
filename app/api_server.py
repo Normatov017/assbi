@@ -450,6 +450,38 @@ def estimate_unique_visitors(df: pd.DataFrame) -> int:
     return safe_int(total)
 
 
+def latest_total_unique(camera_id: str) -> int:
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        row = conn.execute(
+            """
+            SELECT total_unique_people
+            FROM minute_analytics
+            WHERE camera_id=?
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 1
+            """,
+            (camera_id,),
+        ).fetchone()
+        conn.close()
+        return safe_int(row[0] if row else 0)
+    except Exception:
+        return 0
+
+
+def normalize_total_unique(camera_id: str, active_people: int, new_unique_people: int, total_unique_people: int) -> int:
+    previous = latest_total_unique(camera_id)
+    active = max(0, safe_int(active_people, 0))
+    new_unique = max(0, safe_int(new_unique_people, 0))
+    incoming = max(0, safe_int(total_unique_people, 0))
+
+    if previous <= 0:
+        return max(active, min(incoming, active + new_unique))
+
+    max_reasonable_next = previous + max(active, new_unique, 1)
+    return max(previous, min(incoming, max_reasonable_next))
+
+
 def current_day_df(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
@@ -1449,6 +1481,12 @@ async def ingest_camera_frame(
         save_cameras(cameras_data)
 
     if should_write_analytics:
+        normalized_total_unique = normalize_total_unique(
+            cam_id,
+            active_people,
+            new_unique_people,
+            total_unique_people,
+        )
         insert_minute_analytics(
             {
                 "timestamp": parsed.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1459,7 +1497,7 @@ async def ingest_camera_frame(
                 "site": site,
                 "active_people": active_people,
                 "new_unique_people": new_unique_people,
-                "total_unique_people": total_unique_people,
+                "total_unique_people": normalized_total_unique,
                 "vehicle_count": vehicle_count,
                 "object_count": object_count,
                 "laptop_count": laptop_count,

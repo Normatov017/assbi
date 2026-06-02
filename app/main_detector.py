@@ -325,6 +325,8 @@ def main():
                     conf = float(box.conf[0])
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     track_id = int(box.id[0]) if box.id is not None else None
+                    if track_id is None and cls_id == PERSON_CLASS_ID:
+                        track_id = hash((round(x1 / 20), round(y1 / 20), round(x2 / 20), round(y2 / 20)))
 
                     latest_boxes.append({
                         "cls_id": cls_id,
@@ -351,9 +353,11 @@ def main():
 
             if cls_id == PERSON_CLASS_ID:
                 if track_id is not None:
+                    first_seen = track_id not in all_unique
                     active_tracks[track_id] = now
                     all_unique.add(track_id)
-                    new_unique.add(track_id)
+                    if first_seen:
+                        new_unique.add(track_id)
 
                 person_posture = posture.estimate(x1, y1, x2, y2, h)
 
