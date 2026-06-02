@@ -24,6 +24,7 @@ import {
   Users,
   Video,
   WifiOff,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -294,6 +295,7 @@ function makeCameraEvents(cameras: CameraType[]): CameraEvent[] {
 export default function LiveSurveillance() {
   const [cameras, setCameras] = useState<CameraType[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState("");
+  const [focusOpen, setFocusOpen] = useState(false);
   const [isMonitoring, setIsMonitoring] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
@@ -356,6 +358,24 @@ export default function LiveSurveillance() {
 
     return () => window.clearInterval(timer);
   }, [isMonitoring, loadCameras]);
+
+  useEffect(() => {
+    if (!focusOpen) return;
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setFocusOpen(false);
+      }
+    }
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [focusOpen]);
 
   const selectedCamera =
     cameras.find((camera) => camera.camera_id === selectedCameraId) ||
@@ -700,7 +720,11 @@ export default function LiveSurveillance() {
                   </div>
                 </div>
 
-                <Button variant="outline">
+                <Button
+                  variant="outline"
+                  disabled={!selectedCamera}
+                  onClick={() => setFocusOpen(true)}
+                >
                   <Maximize2 className="size-4 mr-2" />
                   Focus View
                 </Button>
@@ -1279,6 +1303,81 @@ export default function LiveSurveillance() {
           </Card>
         </div>
       </div>
+
+      {focusOpen && selectedCamera && (
+        <div className="fixed inset-0 z-[100] bg-black/95 text-white">
+          <div className="h-full w-full flex flex-col">
+            <div className="flex items-center justify-between gap-4 border-b border-white/10 bg-[#070b1f]/95 px-4 sm:px-6 py-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-blue-500/15 border border-blue-500/25">
+                    <Video className="size-5 text-blue-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-lg sm:text-2xl font-semibold truncate">
+                      {selectedCamera.site || selectedCamera.camera_id}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-white/55 truncate">
+                      {selectedCamera.camera_id} • {cameraSourceLabel(selectedCamera.type)} • refreshed {lastUpdated.toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Badge className={statusBadge(selectedCamera.running)}>
+                  {selectedCamera.running ? "LIVE" : "OFFLINE"}
+                </Badge>
+                <Badge className={riskBadge(numberValue(selectedCamera.risk_score))}>
+                  {formatPercent(selectedCamera.risk_score)} RISK
+                </Badge>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setFocusOpen(false)}
+                  className="border-white/20 bg-white/5 text-white hover:bg-white/10"
+                >
+                  <X className="size-5" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="relative flex-1 min-h-0 bg-black flex items-center justify-center">
+              {selectedCamera.running && selectedStreamUrl ? (
+                <img
+                  key={`${selectedCamera.camera_id}-focus-stream`}
+                  src={`${selectedStreamUrl}&focus=1`}
+                  alt={selectedCamera.site || selectedCamera.camera_id}
+                  className="h-full w-full object-contain"
+                />
+              ) : selectedYoutubeEmbedUrl ? (
+                <iframe
+                  key={`${selectedCamera.camera_id}-focus-youtube`}
+                  src={selectedYoutubeEmbedUrl}
+                  title={selectedCamera.site || selectedCamera.camera_id}
+                  className="h-full w-full"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="text-center">
+                  <WifiOff className="size-12 mx-auto mb-3 text-white/45" />
+                  <p className="text-lg font-semibold">No live stream available</p>
+                </div>
+              )}
+
+              <div className="absolute left-4 right-4 bottom-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <OverlayMetric label="Live" value={selectedCamera.active_people || 0} />
+                <OverlayMetric label="Today" value={formatNumber(getTodayVisitors(selectedCamera))} />
+                <OverlayMetric label="Total" value={formatNumber(selectedCamera.total_unique)} />
+                <OverlayMetric label="Standing" value={selectedCamera.standing || 0} />
+                <OverlayMetric label="Objects" value={getTotalObjects(selectedCamera)} />
+                <OverlayMetric label="FPS" value={numberValue(selectedCamera.fps).toFixed(1)} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
