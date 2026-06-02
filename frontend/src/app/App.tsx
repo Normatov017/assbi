@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 import LoginScreen from "./components/LoginScreen";
 import DashboardLayout from "./components/DashboardLayout";
 import { API_BASE } from "./lib/config";
+import { useI18n } from "./lib/i18n";
 
 import DashboardOverview from "./components/pages/DashboardOverview";
 import LiveSurveillance from "./components/pages/LiveSurveillance";
@@ -16,6 +17,7 @@ import AIChatbot from "./components/pages/AIChatbot";
 import Settings from "./components/pages/Settings";
 
 export default function App() {
+  const { t } = useI18n();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
@@ -73,7 +75,7 @@ export default function App() {
   if (isCheckingSession) {
     return (
       <div className="dark min-h-screen w-full bg-[#070b1f] text-white flex items-center justify-center">
-        <div className="text-sm text-white/70">Checking secure session...</div>
+        <div className="text-sm text-white/70">{t("common.checkingSession")}</div>
       </div>
     );
   }

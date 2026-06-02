@@ -35,9 +35,11 @@ import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { API_BASE } from "../lib/config";
+import { LanguageSwitcher, useI18n } from "../lib/i18n";
 
 type NavItem = {
   name: string;
+  labelKey: string;
   path: string;
   icon: LucideIcon;
   badge?: string;
@@ -60,12 +62,14 @@ type NotificationItem = {
 const navigation: NavItem[] = [
   {
     name: "Dashboard",
+    labelKey: "nav.dashboard",
     path: "/",
     icon: LayoutDashboard,
     group: "core",
   },
   {
     name: "Live Surveillance",
+    labelKey: "nav.live",
     path: "/surveillance",
     icon: Video,
     badge: "LIVE",
@@ -73,18 +77,21 @@ const navigation: NavItem[] = [
   },
   {
     name: "Crowd Analytics",
+    labelKey: "nav.crowd",
     path: "/crowd",
     icon: Users,
     group: "intelligence",
   },
   {
     name: "Object Detection",
+    labelKey: "nav.objects",
     path: "/objects",
     icon: ScanSearch,
     group: "intelligence",
   },
   {
     name: "Anomaly Detection",
+    labelKey: "nav.anomalies",
     path: "/anomalies",
     icon: AlertTriangle,
     badge: "3",
@@ -92,24 +99,28 @@ const navigation: NavItem[] = [
   },
   {
     name: "Predictive Analytics",
+    labelKey: "nav.predictive",
     path: "/predictive",
     icon: TrendingUp,
     group: "intelligence",
   },
   {
     name: "Reports",
+    labelKey: "nav.reports",
     path: "/reports",
     icon: FileText,
     group: "system",
   },
   {
     name: "AI Chatbot",
+    labelKey: "nav.chatbot",
     path: "/chatbot",
     icon: MessageSquare,
     group: "system",
   },
   {
     name: "Settings",
+    labelKey: "nav.settings",
     path: "/settings",
     icon: Settings,
     group: "system",
@@ -149,10 +160,10 @@ const initialNotifications: NotificationItem[] = [
   },
 ];
 
-function getGroupTitle(group: NavItem["group"]) {
-  if (group === "core") return "Monitoring";
-  if (group === "intelligence") return "Intelligence";
-  return "Platform";
+function getGroupTitleKey(group: NavItem["group"]) {
+  if (group === "core") return "layout.monitoring";
+  if (group === "intelligence") return "layout.intelligence";
+  return "layout.platform";
 }
 
 function isRouteActive(currentPath: string, itemPath: string) {
@@ -205,6 +216,7 @@ function clearLoginStorage() {
 }
 
 export default function DashboardLayout() {
+  const { t } = useI18n();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -384,7 +396,7 @@ export default function DashboardLayout() {
                 ASSBI Platform
               </h1>
               <p className="text-[10px] text-muted-foreground truncate">
-                AI Surveillance & BI
+                {t("brand.subtitle")}
               </p>
             </div>
           </button>
@@ -403,9 +415,9 @@ export default function DashboardLayout() {
           <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs text-muted-foreground">System Health</p>
+                <p className="text-xs text-muted-foreground">{t("layout.systemHealth")}</p>
                 <p className="text-sm font-semibold text-green-500">
-                  Operational
+                  {t("layout.operational")}
                 </p>
               </div>
 
@@ -432,7 +444,7 @@ export default function DashboardLayout() {
           <div key={group} className="space-y-1">
             {sidebarOpen && (
               <p className="px-3 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                {getGroupTitle(group)}
+                {t(getGroupTitleKey(group))}
               </p>
             )}
 
@@ -444,7 +456,7 @@ export default function DashboardLayout() {
                 <button
                   key={item.path}
                   onClick={() => navigate(item.path)}
-                  title={!sidebarOpen ? item.name : undefined}
+                  title={!sidebarOpen ? t(item.labelKey) : undefined}
                   className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
                     isActive
                       ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
@@ -460,7 +472,7 @@ export default function DashboardLayout() {
                   {sidebarOpen && (
                     <>
                       <span className="text-sm truncate flex-1 text-left">
-                        {item.name}
+                        {t(item.labelKey)}
                       </span>
 
                       {item.badge && (
@@ -543,7 +555,7 @@ export default function DashboardLayout() {
                       ASSBI Platform
                     </h1>
                     <p className="text-[10px] text-muted-foreground">
-                      AI Surveillance & BI
+                      {t("brand.subtitle")}
                     </p>
                   </div>
                 </div>
@@ -574,7 +586,7 @@ export default function DashboardLayout() {
                       }`}
                     >
                       <Icon className="size-5" />
-                      <span className="text-sm">{item.name}</span>
+                      <span className="text-sm">{t(item.labelKey)}</span>
 
                       {item.badge && (
                         <Badge
@@ -615,7 +627,7 @@ export default function DashboardLayout() {
 
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground truncate">
-                  {currentPage.name}
+                  {t(currentPage.labelKey)}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
                   Enterprise monitoring workspace
@@ -632,7 +644,7 @@ export default function DashboardLayout() {
               <Input
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
-                placeholder="Search cameras, reports, alerts..."
+                placeholder={t("common.search")}
                 className="pl-10 pr-10 bg-background/60 border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground"
               />
 
@@ -644,7 +656,7 @@ export default function DashboardLayout() {
             <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-green-500/10 border border-green-500/20">
               <Activity className="size-3 text-green-500 animate-pulse" />
               <span className="text-xs text-green-500 font-medium">
-                All Systems Operational
+                {t("layout.allSystems")}
               </span>
             </div>
 
@@ -654,6 +666,8 @@ export default function DashboardLayout() {
                 24/7 Monitoring
               </span>
             </div>
+
+            <LanguageSwitcher />
 
             <div className="text-sm text-muted-foreground hidden xl:block min-w-[210px] text-right">
               {now.toLocaleDateString("en-US", {

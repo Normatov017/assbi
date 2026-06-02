@@ -54,8 +54,11 @@ import {
   TableRow,
 } from "../ui/table";
 import { getSummary } from "../../lib/api";
+import { useI18n } from "../../lib/i18n";
 
 const CHART_COLORS = ["#10b981", "#06b6d4", "#8b5cf6", "#f59e0b", "#ef4444"];
+const CHART_TEXT = "#e5e7eb";
+const CHART_MUTED = "#94a3b8";
 
 type ApiStatus = "Connecting" | "Live" | "Offline";
 type TimeRange = "live" | "today" | "week";
@@ -219,6 +222,7 @@ function makeFallbackTrend(kpis: Kpis): TrendItem[] {
 }
 
 export default function DashboardOverview() {
+  const { t } = useI18n();
   const [data, setData] = useState<SummaryData | null>(null);
   const [apiStatus, setApiStatus] = useState<ApiStatus>("Connecting");
   const [isLoading, setIsLoading] = useState(true);
@@ -398,43 +402,43 @@ export default function DashboardOverview() {
   const kpiCards = useMemo(
     () => [
       {
-        title: "Live People",
+        title: t("dashboard.livePeople"),
         value: formatNumber(kpis.active_people),
-        change: "Current live count",
+        change: t("dashboard.currentLive"),
         icon: Users,
         color: "text-cyan-500",
         bgColor: "bg-cyan-500/10",
         borderColor: "border-cyan-500/20",
       },
       {
-        title: "Today Visitors",
+        title: t("dashboard.todayVisitors"),
         value: formatNumber(todayVisitors),
-        change: "Entered today",
+        change: t("dashboard.enteredToday"),
         icon: TrendingUp,
         color: "text-emerald-500",
         bgColor: "bg-emerald-500/10",
         borderColor: "border-emerald-500/20",
       },
       {
-        title: "Total Unique",
+        title: t("dashboard.totalUnique"),
         value: formatNumber(kpis.total_unique),
-        change: "Seen since detector start",
+        change: t("dashboard.seenSinceStart"),
         icon: CheckCircle2,
         color: "text-green-500",
         bgColor: "bg-green-500/10",
         borderColor: "border-green-500/20",
       },
       {
-        title: "Cameras Online",
+        title: t("dashboard.camerasOnline"),
         value: `${onlineCameras}/${totalCameras}`,
-        change: `${offlineCameras} offline`,
+        change: `${offlineCameras} ${t("common.offline")}`,
         icon: Camera,
         color: "text-blue-500",
         bgColor: "bg-blue-500/10",
         borderColor: "border-blue-500/20",
       },
       {
-        title: "Risk Score",
+        title: t("dashboard.riskScore"),
         value: formatPercent(kpis.risk_score),
         change: riskLabel(numberValue(kpis.risk_score)),
         icon: ShieldAlert,
@@ -443,7 +447,7 @@ export default function DashboardOverview() {
         borderColor: "border-red-500/20",
       },
       {
-        title: "Objects",
+        title: t("dashboard.objects"),
         value: formatNumber(getTotalObjectsFromKpis(kpis)),
         change: "Phones, laptops, vehicles",
         icon: Package,
@@ -452,7 +456,7 @@ export default function DashboardOverview() {
         borderColor: "border-orange-500/20",
       },
       {
-        title: "Incidents",
+        title: t("dashboard.incidents"),
         value: formatNumber(kpis.incidents || incidents.length),
         change: "Recent event cases",
         icon: AlertTriangle,
@@ -461,7 +465,7 @@ export default function DashboardOverview() {
         borderColor: "border-amber-500/20",
       },
       {
-        title: "Processing FPS",
+        title: t("dashboard.processingFps"),
         value: avgCameraFps.toFixed(1),
         change: "Detection speed",
         icon: Zap,
@@ -470,7 +474,7 @@ export default function DashboardOverview() {
         borderColor: "border-yellow-500/20",
       },
       {
-        title: "Data Quality",
+        title: t("dashboard.dataQuality"),
         value: formatPercent(avgCameraQuality),
         change: apiStatus,
         icon: Activity,
@@ -489,6 +493,7 @@ export default function DashboardOverview() {
       avgCameraFps,
       avgCameraQuality,
       todayVisitors,
+      t,
     ]
   );
 
@@ -497,7 +502,7 @@ export default function DashboardOverview() {
       <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-3 mb-2">
-            <h1 className="text-3xl font-semibold text-foreground">ASSBI Ultra Dashboard</h1>
+            <h1 className="text-3xl font-semibold text-foreground">{t("dashboard.title")}</h1>
 
             <Badge
               className={
@@ -600,8 +605,8 @@ export default function DashboardOverview() {
               </div>
             </CardHeader>
 
-            <CardContent>
-              <ResponsiveContainer width="100%" height={330}>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={330}>
                 <ComposedChart data={trend}>
                   <defs>
                     <linearGradient id="activeGradient" x1="0" y1="0" x2="0" y2="1">
@@ -610,8 +615,8 @@ export default function DashboardOverview() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" />
-                  <YAxis stroke="hsl(var(--muted-foreground))" />
+                  <XAxis dataKey="time" stroke={CHART_MUTED} tick={{ fill: CHART_TEXT, fontSize: 12 }} />
+                  <YAxis stroke={CHART_MUTED} tick={{ fill: CHART_TEXT, fontSize: 12 }} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: "hsl(var(--card))",
@@ -629,9 +634,9 @@ export default function DashboardOverview() {
           </Card>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-            <ScoreGauge title="Platform Score" value={platformScore} icon={Cpu} hint="Combined uptime, quality, FPS and risk score" />
-            <ScoreGauge title="Uptime Score" value={uptimeScore} icon={Wifi} hint={`${onlineCameras}/${totalCameras} cameras online`} />
-            <ScoreGauge title="Risk Control" value={Math.max(0, 100 - numberValue(kpis.risk_score))} icon={ShieldAlert} hint="Higher value means lower operational risk" />
+            <ScoreGauge title={t("dashboard.platformScore")} value={platformScore} icon={Cpu} hint="Combined uptime, quality, FPS and risk score" />
+            <ScoreGauge title={t("dashboard.uptimeScore")} value={uptimeScore} icon={Wifi} hint={`${onlineCameras}/${totalCameras} cameras online`} />
+            <ScoreGauge title={t("dashboard.riskControl")} value={Math.max(0, 100 - numberValue(kpis.risk_score))} icon={ShieldAlert} hint="Higher value means lower operational risk" />
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -639,7 +644,7 @@ export default function DashboardOverview() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Gauge className="size-5 text-blue-500" />
-                  Camera Health
+                  {t("dashboard.cameraHealth")}
                 </CardTitle>
               </CardHeader>
 
@@ -650,8 +655,8 @@ export default function DashboardOverview() {
                   <ResponsiveContainer width="100%" height={270}>
                     <BarChart data={cameras.slice(0, 8)}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="camera_id" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} />
-                      <YAxis stroke="hsl(var(--muted-foreground))" />
+                      <XAxis dataKey="camera_id" stroke={CHART_MUTED} tick={{ fill: CHART_TEXT, fontSize: 11 }} interval={0} height={48} />
+                      <YAxis stroke={CHART_MUTED} tick={{ fill: CHART_TEXT, fontSize: 12 }} />
                       <Tooltip
                         contentStyle={{
                           backgroundColor: "hsl(var(--card))",
@@ -671,7 +676,7 @@ export default function DashboardOverview() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Package className="size-5 text-orange-500" />
-                  Object Breakdown
+                  {t("dashboard.objectBreakdown")}
                 </CardTitle>
               </CardHeader>
 
@@ -681,7 +686,7 @@ export default function DashboardOverview() {
                 ) : (
                   <ResponsiveContainer width="100%" height={270}>
                     <PieChart>
-                      <Pie data={objectBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={58} outerRadius={92} label>
+                      <Pie data={objectBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={58} outerRadius={92} label={false}>
                         {objectBreakdown.map((_, index) => (
                           <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
@@ -873,20 +878,31 @@ export default function DashboardOverview() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Layers className="size-5 text-emerald-500" />
-                Platform Control Score
+                {t("dashboard.platformControlScore")}
               </CardTitle>
             </CardHeader>
 
             <CardContent>
-              <ResponsiveContainer width="100%" height={230}>
+              <div className="relative h-[270px]">
+                <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart innerRadius="68%" outerRadius="100%" data={[{ name: "Score", value: platformScore, fill: "#10b981" }]} startAngle={90} endAngle={-270}>
                   <RadialBar dataKey="value" cornerRadius={18} background />
-                  <Tooltip />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 12,
+                      color: CHART_TEXT,
+                    }}
+                  />
                 </RadialBarChart>
               </ResponsiveContainer>
-              <div className="text-center -mt-28 mb-10 pointer-events-none">
-                <p className="text-4xl font-semibold">{platformScore}%</p>
-                <p className="text-sm text-muted-foreground">Operational score</p>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center">
+                    <p className="text-4xl font-semibold text-white">{platformScore}%</p>
+                    <p className="text-sm text-white/75">{t("dashboard.operationalScore")}</p>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -935,7 +951,7 @@ export default function DashboardOverview() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Eye className="size-5 text-cyan-500" />
-                Posture Analytics
+                {t("dashboard.postureAnalytics")}
               </CardTitle>
             </CardHeader>
 
@@ -945,7 +961,7 @@ export default function DashboardOverview() {
               ) : (
                 <ResponsiveContainer width="100%" height={245}>
                   <PieChart>
-                    <Pie data={posture} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} label>
+                    <Pie data={posture} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} label={false}>
                       {posture.map((_, index) => (
                         <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                       ))}
@@ -955,10 +971,24 @@ export default function DashboardOverview() {
                         backgroundColor: "hsl(var(--card))",
                         border: "1px solid hsl(var(--border))",
                         borderRadius: 12,
+                        color: CHART_TEXT,
                       }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
+              )}
+              {!posture.every((item) => numberValue(item.value) === 0) && (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {posture.map((item, index) => (
+                    <div key={item.name} className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="size-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+                        <span className="text-xs text-muted-foreground">{item.name}</span>
+                      </div>
+                      <p className="text-lg font-semibold text-white mt-1">{formatNumber(item.value)}</p>
+                    </div>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -967,7 +997,7 @@ export default function DashboardOverview() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Laptop className="size-5 text-blue-500" />
-                Device Awareness
+                {t("dashboard.deviceAwareness")}
               </CardTitle>
             </CardHeader>
 
