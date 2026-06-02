@@ -304,6 +304,10 @@ def is_local_video(url: str) -> bool:
     return str(url).lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm"))
 
 
+def is_rtsp_source(url: str) -> bool:
+    return str(url).lower().startswith("rtsp://")
+
+
 def normalize_camera_id(value: str) -> str:
     clean = "".join(ch if ch.isalnum() else "_" for ch in value.lower().strip())
     while "__" in clean:
@@ -544,7 +548,16 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     else:
         cmd.extend(["--clean-ui", "--speed-mode", speed_mode])
 
-    if not lightweight and is_local_video(url):
+    if not lightweight and is_rtsp_source(url):
+        cmd.extend([
+            "--width", "1280",
+            "--height", "720",
+            "--imgsz", "960",
+            "--conf", "0.07",
+            "--detect-every", "2",
+            "--log-every", "3",
+        ])
+    elif not lightweight and is_local_video(url):
         cmd.extend(["--detect-every", "3", "--log-every", "5"])
     elif not lightweight:
         cmd.append("--fast-mode")
@@ -1268,7 +1281,9 @@ def add_camera(payload: CameraPayload, request: Request):
     cameras_data.append(new_camera)
     save_cameras(cameras_data)
 
-    started = start_detector(camera_id, site, url, speed_mode)
+    started = False
+    if new_camera["enabled"]:
+        started = start_detector(camera_id, site, url, speed_mode)
     audit_event(request, "camera.add", f"camera_id={camera_id}; site={site}; type={cam_type}; started={started}")
 
     return {
