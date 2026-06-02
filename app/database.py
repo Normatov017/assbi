@@ -8,12 +8,15 @@ except ModuleNotFoundError:
 
 
 def get_connection():
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA busy_timeout = 30000")
+    return conn
 
 
 def init_db():
     conn = get_connection()
     cur = conn.cursor()
+    cur.execute("PRAGMA journal_mode = WAL")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS minute_analytics (
@@ -72,7 +75,10 @@ def init_db():
         incident_type TEXT NOT NULL,
         severity TEXT NOT NULL,
         message TEXT NOT NULL,
-        status TEXT DEFAULT 'Open'
+        status TEXT DEFAULT 'Open',
+        assigned_to TEXT,
+        operator_note TEXT,
+        resolved_at TEXT
     )
     """)
 
@@ -121,6 +127,22 @@ def init_db():
         if col not in existing_cols:
             cur.execute(
                 f"ALTER TABLE minute_analytics ADD COLUMN {col} {definition}"
+            )
+
+    incident_cols = {
+        row[1]
+        for row in cur.execute("PRAGMA table_info(incidents)").fetchall()
+    }
+    incident_migrations = {
+        "assigned_to": "TEXT",
+        "operator_note": "TEXT",
+        "resolved_at": "TEXT",
+    }
+
+    for col, definition in incident_migrations.items():
+        if col not in incident_cols:
+            cur.execute(
+                f"ALTER TABLE incidents ADD COLUMN {col} {definition}"
             )
 
     conn.commit()
@@ -321,6 +343,7 @@ def insert_incident(timestamp, camera_id, site, incident_type, severity, message
 
 
 def audit(username, action, details=""):
+    init_db()
     conn = get_connection()
     cur = conn.cursor()
 

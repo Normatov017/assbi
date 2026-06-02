@@ -112,6 +112,13 @@ const navigation: NavItem[] = [
     group: "system",
   },
   {
+    name: "Evaluation & Governance",
+    labelKey: "nav.evaluation",
+    path: "/evaluation",
+    icon: ShieldCheck,
+    group: "system",
+  },
+  {
     name: "AI Chatbot",
     labelKey: "nav.chatbot",
     path: "/chatbot",

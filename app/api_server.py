@@ -21,10 +21,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 try:
     from app.config import DB_PATH
-    from app.database import init_db, get_thresholds, insert_minute_analytics, update_threshold
+    from app.database import init_db, get_thresholds, insert_minute_analytics, update_threshold, audit
 except ModuleNotFoundError:
     from config import DB_PATH
-    from database import init_db, get_thresholds, insert_minute_analytics, update_threshold
+    from database import init_db, get_thresholds, insert_minute_analytics, update_threshold, audit
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -88,6 +88,12 @@ class CameraPayload(BaseModel):
     enabled: Optional[bool] = True
 
 
+class IncidentWorkflowPayload(BaseModel):
+    status: Optional[str] = None
+    assigned_to: Optional[str] = None
+    operator_note: Optional[str] = None
+
+
 DEFAULT_USERS = {
     "admin@assbi.com": {
         "password": "admin123",
@@ -109,6 +115,16 @@ DEFAULT_USERS = {
         "name": "Manager",
         "role": "Manager",
     },
+}
+
+
+ROLE_PERMISSIONS = {
+    "Administrator": {"view", "manage_cameras", "manage_settings", "manage_incidents", "export", "audit", "compliance"},
+    "Security Officer": {"view", "manage_cameras", "manage_incidents", "export", "audit", "compliance"},
+    "BI Analyst": {"view", "export", "audit", "compliance"},
+    "Manager": {"view", "export", "compliance"},
+    "Viewer": {"view"},
+    "User": {"view"},
 }
 
 
@@ -199,6 +215,50 @@ def auth_required_response() -> JSONResponse:
     return JSONResponse({"ok": False, "message": "Authentication required"}, status_code=401)
 
 
+def permission_denied_response(permission: str) -> JSONResponse:
+    return JSONResponse(
+        {"ok": False, "message": f"Permission required: {permission}"},
+        status_code=403,
+    )
+
+
+def user_permissions(user: Optional[dict[str, Any]]) -> set[str]:
+    role = safe_str((user or {}).get("role"), "User")
+    return set(ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS["User"]))
+
+
+def has_permission(user: Optional[dict[str, Any]], permission: str) -> bool:
+    return permission in user_permissions(user)
+
+
+def required_permission_for_request(method: str, path: str) -> str:
+    if path.startswith("/api/reports/"):
+        return "export"
+    if path.startswith("/api/audit"):
+        return "audit"
+    if path.startswith("/api/compliance"):
+        return "compliance"
+    if path.startswith("/api/settings") or path.startswith("/api/thresholds"):
+        return "manage_settings" if method in {"POST", "PUT", "PATCH", "DELETE"} else "view"
+    if path.startswith("/api/incidents") and method in {"POST", "PATCH", "DELETE"}:
+        return "manage_incidents"
+    if path.startswith("/api/cameras") or path.startswith("/api/camera/") or path.startswith("/api/add_camera"):
+        return "manage_cameras" if method in {"POST", "PUT", "PATCH", "DELETE"} else "view"
+    return "view"
+
+
+def audit_event(request_or_user: Any, action: str, details: str = "") -> None:
+    try:
+        if isinstance(request_or_user, dict):
+            user = request_or_user
+        else:
+            user = getattr(request_or_user.state, "user", None) or request_user(request_or_user)
+        username = safe_str((user or {}).get("email") or (user or {}).get("name"), "system")
+        audit(username, action, details)
+    except Exception:
+        pass
+
+
 def safe_int(value: Any, default: int = 0) -> int:
     try:
         if pd.isna(value):
@@ -215,6 +275,20 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def safe_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on", "enabled"}:
+            return True
+        if normalized in {"false", "0", "no", "off", "disabled"}:
+            return False
+    if value is None:
+        return default
+    return bool(value)
 
 
 def safe_str(value: Any, default: str = "") -> str:
@@ -249,11 +323,11 @@ def json_safe_records(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 def read_table(table: str) -> pd.DataFrame:
-    init_db()
     if not Path(DB_PATH).exists():
         return pd.DataFrame()
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA busy_timeout = 30000")
     try:
         return pd.read_sql_query(f"SELECT * FROM {table}", conn)
     except Exception:
@@ -699,6 +773,224 @@ def build_summary(
     }
 
 
+def build_visitor_analytics(
+    camera_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict[str, Any]:
+    df = filter_df(read_table("minute_analytics"), camera_id, start_date, end_date)
+    if df.empty:
+        return {"summary": {"entries": 0, "exits": 0, "current_inside": 0, "peak_occupancy": 0}, "daily": [], "by_camera": []}
+
+    work = df.copy()
+    if "timestamp" in work.columns:
+        work["timestamp"] = pd.to_datetime(work["timestamp"], errors="coerce")
+        work = work.sort_values("timestamp")
+    if "date" not in work.columns and "timestamp" in work.columns:
+        work["date"] = work["timestamp"].dt.strftime("%Y-%m-%d")
+
+    daily = []
+    day_groups = work.groupby("date") if "date" in work.columns else [("Current", work)]
+    for date, group in day_groups:
+        entries = estimate_unique_visitors(group)
+        current_inside = safe_int(group.tail(1).get("active_people", pd.Series([0])).iloc[-1])
+        peak = safe_int(group.get("active_people", pd.Series([0])).max())
+        exits = max(0, entries - current_inside)
+        daily.append(
+            {
+                "date": safe_str(date),
+                "entries": entries,
+                "exits": exits,
+                "current_inside": current_inside,
+                "peak_occupancy": peak,
+            }
+        )
+
+    by_camera = []
+    if "camera_id" in work.columns:
+        for cam_id, group in work.groupby("camera_id"):
+            site = safe_str(group.tail(1).get("site", pd.Series([cam_id])).iloc[-1], safe_str(cam_id))
+            entries = estimate_unique_visitors(group)
+            current_inside = safe_int(group.tail(1).get("active_people", pd.Series([0])).iloc[-1])
+            by_camera.append(
+                {
+                    "camera_id": safe_str(cam_id),
+                    "site": site,
+                    "entries": entries,
+                    "exits": max(0, entries - current_inside),
+                    "current_inside": current_inside,
+                    "peak_occupancy": safe_int(group.get("active_people", pd.Series([0])).max()),
+                }
+            )
+
+    summary = {
+        "entries": safe_int(sum(item["entries"] for item in daily)),
+        "exits": safe_int(sum(item["exits"] for item in daily)),
+        "current_inside": safe_int(work.tail(1).get("active_people", pd.Series([0])).iloc[-1]),
+        "peak_occupancy": safe_int(work.get("active_people", pd.Series([0])).max()),
+    }
+
+    return {"summary": summary, "daily": daily[-14:], "by_camera": by_camera}
+
+
+def build_evaluation_report(
+    camera_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict[str, Any]:
+    df = filter_df(read_table("minute_analytics"), camera_id, start_date, end_date)
+    incidents_df = filter_df(read_table("incidents"), camera_id, start_date, end_date)
+    cameras_data = build_cameras_response(camera_id, start_date, end_date)
+
+    if df.empty:
+        return {
+            "summary": {
+                "records": 0,
+                "estimated_precision": 0,
+                "estimated_recall": 0,
+                "data_quality": 0,
+                "avg_fps": 0,
+                "scalability_score": 0,
+                "veracity_score": 0,
+            },
+            "metrics": [],
+            "cameras": [],
+            "recommendations": ["Start cameras to collect evaluation data."],
+        }
+
+    avg_quality = safe_float(df.get("data_quality_score", pd.Series([0])).mean())
+    avg_fps = safe_float(df.get("fps", pd.Series([0])).mean())
+    avg_risk = safe_float(df.get("risk_score", pd.Series([0])).mean())
+    records = len(df)
+    active_nonzero = safe_float((df.get("active_people", pd.Series([0])) > 0).mean() * 100)
+    fps_efficiency = max(0, min(100, avg_fps * 5))
+    estimated_precision = round(max(0, min(98, 55 + avg_quality * 0.35 + fps_efficiency * 0.18)), 1)
+    estimated_recall = round(max(0, min(96, 50 + active_nonzero * 0.25 + avg_quality * 0.25)), 1)
+    scalability_score = round(max(0, min(100, 100 - max(0, len(cameras_data) - 4) * 8 + min(20, avg_fps))), 1)
+    veracity_score = round(max(0, min(100, avg_quality * 0.7 + (100 - avg_risk) * 0.15 + fps_efficiency * 0.15)), 1)
+
+    camera_rows = []
+    if not df.empty and "camera_id" in df.columns:
+        for cam_id, group in df.groupby("camera_id"):
+            latest = group.tail(1).iloc[0]
+            camera_rows.append(
+                {
+                    "camera_id": safe_str(cam_id),
+                    "site": safe_str(latest.get("site", cam_id), safe_str(cam_id)),
+                    "records": len(group),
+                    "avg_fps": round(safe_float(group.get("fps", pd.Series([0])).mean()), 1),
+                    "avg_quality": round(safe_float(group.get("data_quality_score", pd.Series([0])).mean()), 1),
+                    "avg_risk": round(safe_float(group.get("risk_score", pd.Series([0])).mean()), 1),
+                    "estimated_accuracy": round(max(0, min(98, 50 + safe_float(group.get("data_quality_score", pd.Series([0])).mean()) * 0.4)), 1),
+                }
+            )
+
+    recommendations = []
+    if avg_fps < 6:
+        recommendations.append("FPS is low. Use faster model mode, reduce resolution or increase detect interval.")
+    if avg_quality < 60:
+        recommendations.append("Data quality is low. Check stream source, lighting, network and camera angle.")
+    if len(incidents_df) > 0:
+        recommendations.append("Review incident workflow status and operator notes for unresolved alerts.")
+    if not recommendations:
+        recommendations.append("Evaluation indicators are stable. Continue normal monitoring and collect more labelled validation data.")
+
+    return {
+        "summary": {
+            "records": records,
+            "estimated_precision": estimated_precision,
+            "estimated_recall": estimated_recall,
+            "data_quality": round(avg_quality, 1),
+            "avg_fps": round(avg_fps, 1),
+            "scalability_score": scalability_score,
+            "veracity_score": veracity_score,
+        },
+        "metrics": [
+            {"name": "Volume", "value": records, "description": "Analytics rows processed by the BI pipeline."},
+            {"name": "Variety", "value": len(cameras_data), "description": "Configured structured and unstructured camera sources."},
+            {"name": "Velocity", "value": round(avg_fps, 1), "description": "Average real-time processing FPS."},
+            {"name": "Veracity", "value": veracity_score, "description": "Estimated data trust score from quality, FPS and risk stability."},
+        ],
+        "cameras": camera_rows,
+        "recommendations": recommendations,
+    }
+
+
+def build_pipeline_architecture() -> dict[str, Any]:
+    return {
+        "nodes": [
+            {"id": "sources", "title": "Video Sources", "detail": "YouTube, RTSP, local video and webcam streams"},
+            {"id": "capture", "title": "OpenCV Capture", "detail": "Low-latency frame capture, resizing and frame buffering"},
+            {"id": "ai", "title": "YOLO AI Detection", "detail": "People, vehicle, laptop, phone and object detection"},
+            {"id": "analytics", "title": "Analytics Engine", "detail": "Crowd count, posture, zone, risk and quality scoring"},
+            {"id": "storage", "title": "SQLite BI Storage", "detail": "Structured facts, incidents, audit log and settings"},
+            {"id": "api", "title": "FastAPI Services", "detail": "Realtime JSON API, reports, auth and compliance endpoints"},
+            {"id": "dashboard", "title": "BI Dashboards", "detail": "KPI cards, charts, reports, chatbot and operator workflows"},
+        ],
+        "data_model": [
+            {"table": "minute_analytics", "type": "Fact", "purpose": "Per-camera BI metrics by minute"},
+            {"table": "incidents", "type": "Fact/Workflow", "purpose": "Alert, anomaly and response workflow records"},
+            {"table": "person_sessions", "type": "Session fact", "purpose": "Track-based visitor/session evidence"},
+            {"table": "audit_log", "type": "Governance fact", "purpose": "User actions and compliance evidence"},
+            {"table": "thresholds/settings", "type": "Configuration dimension", "purpose": "Detection, privacy and policy controls"},
+            {"table": "cameras.json", "type": "Camera dimension", "purpose": "Camera source, site and stream metadata"},
+        ],
+        "storage_strategy": [
+            {"class": "Structured", "examples": "KPIs, incidents, audit logs, thresholds", "storage": "SQLite tables"},
+            {"class": "Semi-structured", "examples": "Camera configs and settings", "storage": "JSON files"},
+            {"class": "Unstructured", "examples": "Video frames and snapshots", "storage": "Frame files / stream source"},
+        ],
+        "processing_strategy": [
+            {"mode": "Real-time", "use": "Live detection, operator monitoring, alerts and FPS-sensitive dashboards"},
+            {"mode": "Batch", "use": "Reports, exports, daily visitors, historical evaluation and compliance review"},
+        ],
+    }
+
+
+def build_compliance_status() -> dict[str, Any]:
+    settings = load_settings()
+    sensitive_terms = ("key", "token", "secret", "password")
+    public_settings = {
+        key: ("***configured***" if any(term in key.lower() for term in sensitive_terms) and value else value)
+        for key, value in settings.items()
+    }
+    audit_df = read_table("audit_log")
+    analytics_df = read_table("minute_analytics")
+    incidents_df = read_table("incidents")
+    retention_days = safe_int(settings.get("data_retention_days", 31), 31)
+    last_audit = {}
+    if not audit_df.empty:
+        last_audit = json_safe_records(audit_df.tail(1))[0]
+
+    controls = [
+        {"name": "Authentication", "enabled": True, "evidence": "Session cookie and role-based access middleware"},
+        {"name": "Role-Based Access Control", "enabled": True, "evidence": "Admin, Security Officer, BI Analyst, Manager and Viewer permissions"},
+        {"name": "GDPR Compliance Mode", "enabled": safe_bool(settings.get("gdpr_mode", True), True), "evidence": "Compliance mode setting"},
+        {"name": "Privacy Blur", "enabled": safe_bool(settings.get("privacy_blur", False)) or safe_bool(settings.get("face_blur", False)), "evidence": "Face/person blur configuration"},
+        {"name": "Data Retention", "enabled": retention_days > 0, "evidence": f"{retention_days} day retention policy"},
+        {"name": "Audit Logging", "enabled": True, "evidence": f"{len(audit_df)} audit actions recorded"},
+    ]
+
+    return {
+        "settings": public_settings,
+        "controls": controls,
+        "data_inventory": {
+            "analytics_rows": len(analytics_df),
+            "incident_rows": len(incidents_df),
+            "audit_rows": len(audit_df),
+            "configured_cameras": len(load_cameras()),
+            "retention_days": retention_days,
+        },
+        "last_audit": last_audit,
+        "legal_notes": [
+            "Use privacy blur for public-facing deployments.",
+            "Keep retention period aligned with institutional policy.",
+            "Restrict camera management and report exports by role.",
+            "Review unresolved incidents and audit logs regularly.",
+        ],
+    }
+
+
 def export_df_response(df: pd.DataFrame, filename: str, file_type: str, sheet_name: str = "Data"):
     if df.empty:
         return JSONResponse({"ok": False, "message": "No data for selected filters"}, status_code=404)
@@ -738,6 +1030,9 @@ async def require_api_session(request: Request, call_next):
         user = request_user(request)
         if not user:
             return auth_required_response()
+        permission = required_permission_for_request(request.method.upper(), path)
+        if not has_permission(user, permission):
+            return permission_denied_response(permission)
         request.state.user = user
 
     return await call_next(request)
@@ -777,6 +1072,7 @@ def login(req: LoginRequest):
         "name": user.get("name", email.split("@")[0]),
         "role": user.get("role", "User"),
     }
+    audit_event(safe_user, "auth.login", f"role={safe_user['role']}")
     response = JSONResponse({"ok": True, "token": token, "user": safe_user})
     response.set_cookie(
         SESSION_COOKIE,
@@ -842,6 +1138,47 @@ def incidents(
     return json_safe_records(df.tail(limit))
 
 
+@app.patch("/api/incidents/{incident_id}")
+def update_incident_workflow(incident_id: int, payload: IncidentWorkflowPayload, request: Request):
+    init_db()
+    allowed_status = {"Open", "Assigned", "Investigating", "Resolved", "Closed"}
+    status = (payload.status or "").strip()
+    if status and status not in allowed_status:
+        return JSONResponse({"ok": False, "message": "Invalid incident status"}, status_code=400)
+
+    updates = []
+    values: list[Any] = []
+    if status:
+        updates.append("status=?")
+        values.append(status)
+        if status in {"Resolved", "Closed"}:
+            updates.append("resolved_at=?")
+            values.append(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+    if payload.assigned_to is not None:
+        updates.append("assigned_to=?")
+        values.append(payload.assigned_to.strip())
+    if payload.operator_note is not None:
+        updates.append("operator_note=?")
+        values.append(payload.operator_note.strip())
+
+    if not updates:
+        return JSONResponse({"ok": False, "message": "No workflow fields supplied"}, status_code=400)
+
+    values.append(incident_id)
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(f"UPDATE incidents SET {', '.join(updates)} WHERE id=?", values)
+    changed = cur.rowcount
+    conn.commit()
+    conn.close()
+
+    if not changed:
+        return JSONResponse({"ok": False, "message": "Incident not found"}, status_code=404)
+
+    audit_event(request, "incident.workflow_update", f"incident_id={incident_id}; status={status or '-'}")
+    return {"ok": True, "incident_id": incident_id}
+
+
 @app.get("/api/cameras")
 def cameras(
     camera_id: Optional[str] = Query(default=None),
@@ -849,6 +1186,49 @@ def cameras(
     end_date: Optional[str] = Query(default=None),
 ):
     return build_cameras_response(camera_id, start_date, end_date)
+
+
+@app.get("/api/visitors")
+def visitors(
+    camera_id: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default=None),
+    end_date: Optional[str] = Query(default=None),
+):
+    return build_visitor_analytics(camera_id, start_date, end_date)
+
+
+@app.get("/api/evaluation")
+def evaluation(
+    camera_id: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default=None),
+    end_date: Optional[str] = Query(default=None),
+):
+    return build_evaluation_report(camera_id, start_date, end_date)
+
+
+@app.get("/api/pipeline")
+def pipeline_architecture():
+    return build_pipeline_architecture()
+
+
+@app.get("/api/warehouse/schema")
+def warehouse_schema():
+    return {"ok": True, **build_pipeline_architecture()}
+
+
+@app.get("/api/compliance")
+def compliance_status():
+    return build_compliance_status()
+
+
+@app.get("/api/audit")
+def audit_log(limit: int = 100):
+    df = read_table("audit_log")
+    if df.empty:
+        return []
+    if "id" in df.columns:
+        df = df.sort_values("id", ascending=False)
+    return json_safe_records(df.head(limit))
 
 
 @app.get("/api/relay/cameras")
@@ -859,7 +1239,7 @@ def relay_cameras():
 @app.post("/api/cameras")
 @app.post("/api/cameras/add")
 @app.post("/api/add_camera")
-def add_camera(payload: CameraPayload):
+def add_camera(payload: CameraPayload, request: Request):
     cameras_data = load_cameras()
 
     camera_id = normalize_camera_id(payload.camera_id or f"cam_{len(cameras_data) + 1:02d}")
@@ -889,6 +1269,7 @@ def add_camera(payload: CameraPayload):
     save_cameras(cameras_data)
 
     started = start_detector(camera_id, site, url, speed_mode)
+    audit_event(request, "camera.add", f"camera_id={camera_id}; site={site}; type={cam_type}; started={started}")
 
     return {
         "ok": True,
@@ -900,7 +1281,7 @@ def add_camera(payload: CameraPayload):
 
 
 @app.post("/api/cameras/{camera_id}/start")
-def start_camera(camera_id: str):
+def start_camera(camera_id: str, request: Request):
     cam = next((c for c in load_cameras() if c.get("camera_id") == camera_id), None)
     if not cam:
         return JSONResponse({"ok": False, "message": "Camera not found"}, status_code=404)
@@ -911,12 +1292,14 @@ def start_camera(camera_id: str):
         cam.get("url", ""),
         cam.get("speed_mode", "normal"),
     )
+    audit_event(request, "camera.start", f"camera_id={camera_id}; started={started}")
     return {"ok": True, "started": started}
 
 
 @app.post("/api/cameras/{camera_id}/stop")
-def stop_camera(camera_id: str):
+def stop_camera(camera_id: str, request: Request):
     stopped = stop_detector(camera_id)
+    audit_event(request, "camera.stop", f"camera_id={camera_id}; stopped={stopped}")
     return {"ok": True, "stopped": stopped}
 
 
@@ -1015,7 +1398,7 @@ async def ingest_camera_frame(
 @app.delete("/api/cameras/{camera_id}")
 @app.delete("/api/camera/{camera_id}")
 @app.delete("/api/cameras/{camera_id}/delete")
-def delete_camera(camera_id: str):
+def delete_camera(camera_id: str, request: Request):
     stop_detector(camera_id)
 
     cameras_data = [cam for cam in load_cameras() if cam.get("camera_id") != camera_id]
@@ -1025,6 +1408,7 @@ def delete_camera(camera_id: str):
     if frame_path.exists():
         frame_path.unlink()
 
+    audit_event(request, "camera.delete", f"camera_id={camera_id}")
     return {"ok": True, "camera_id": camera_id, "cameras": cameras_data}
 
 
@@ -1081,15 +1465,17 @@ def thresholds():
 
 @app.post("/api/thresholds")
 @app.post("/api/settings")
-def save_thresholds(payload: dict[str, Any]):
+def save_thresholds(payload: dict[str, Any], request: Request):
     saved = save_settings(payload)
+    audit_event(request, "settings.update", ",".join(sorted(payload.keys())))
     return {"ok": True, "settings": saved, **saved}
 
 
 @app.post("/api/thresholds/{key}")
-def set_threshold(key: str, payload: dict[str, Any]):
+def set_threshold(key: str, payload: dict[str, Any], request: Request):
     value = payload.get("value")
     saved = save_settings({key: value})
+    audit_event(request, "settings.update_threshold", f"{key}={value}")
     return {"ok": True, "key": key, "value": value, "settings": saved}
 
 

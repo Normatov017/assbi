@@ -13,6 +13,7 @@ import ObjectDetection from "./components/pages/ObjectDetection";
 import AnomalyDetection from "./components/pages/AnomalyDetection";
 import PredictiveAnalytics from "./components/pages/PredictiveAnalytics";
 import Reports from "./components/pages/Reports";
+import GovernanceEvaluation from "./components/pages/GovernanceEvaluation";
 import AIChatbot from "./components/pages/AIChatbot";
 import Settings from "./components/pages/Settings";
 
@@ -127,6 +128,11 @@ export default function App() {
             <Route
               path="reports"
               element={<Reports />}
+            />
+
+            <Route
+              path="evaluation"
+              element={<GovernanceEvaluation />}
             />
 
             <Route
