@@ -51,6 +51,8 @@ interface CameraType {
   frame_url?: string;
   active_people?: number;
   total_unique?: number;
+  today_visitors?: number;
+  daily_visitors?: number;
   risk_score?: number;
   fps?: number;
   quality?: number;
@@ -120,6 +122,10 @@ function getTotalObjects(cam?: CameraType) {
     numberValue(cam.vehicles) +
     numberValue(cam.objects)
   );
+}
+
+function getTodayVisitors(cam?: CameraType) {
+  return numberValue(cam?.today_visitors) || numberValue(cam?.daily_visitors);
 }
 
 function getFrameUrl(camera?: CameraType) {
@@ -702,13 +708,17 @@ export default function LiveSurveillance() {
             </CardHeader>
 
             <CardContent className="p-5">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
                 <MetricBox
                   label="Live People"
                   value={selectedCamera?.active_people || 0}
                 />
                 <MetricBox
-                  label="Unique Count"
+                  label="Today Visitors"
+                  value={formatNumber(getTodayVisitors(selectedCamera))}
+                />
+                <MetricBox
+                  label="Total Unique"
                   value={formatNumber(selectedCamera?.total_unique)}
                 />
                 <MetricBox
@@ -788,14 +798,18 @@ export default function LiveSurveillance() {
                       </Badge>
                     </div>
 
-                    <div className="absolute left-4 right-4 bottom-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="absolute left-4 right-4 bottom-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
                       <OverlayMetric
                         label="People"
                         value={selectedCamera.active_people || 0}
                       />
                       <OverlayMetric
-                        label="Objects"
-                        value={getTotalObjects(selectedCamera)}
+                        label="Today"
+                        value={formatNumber(getTodayVisitors(selectedCamera))}
+                      />
+                      <OverlayMetric
+                        label="Total"
+                        value={formatNumber(selectedCamera.total_unique)}
                       />
                       <OverlayMetric
                         label="Standing"

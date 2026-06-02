@@ -333,6 +333,58 @@ def latest_by_camera(df: pd.DataFrame) -> pd.DataFrame:
     return work.groupby("camera_id", as_index=False).tail(1)
 
 
+def estimate_unique_visitors(df: pd.DataFrame) -> int:
+    if df.empty:
+        return 0
+
+    if "total_unique_people" not in df.columns:
+        return safe_int(df.get("new_unique_people", pd.Series([0])).sum())
+
+    work = df.copy()
+    sort_cols = [col for col in ["camera_id", "timestamp", "id"] if col in work.columns]
+    if "timestamp" in work.columns:
+        work["timestamp"] = pd.to_datetime(work["timestamp"], errors="coerce")
+    if sort_cols:
+        work = work.sort_values(sort_cols)
+
+    total = 0
+    group_key = "camera_id" if "camera_id" in work.columns else None
+    groups = work.groupby(group_key) if group_key else [(None, work)]
+
+    for _, group in groups:
+        previous: Optional[int] = None
+        for raw_value in group["total_unique_people"].tolist():
+            current = safe_int(raw_value, 0)
+            if current <= 0:
+                continue
+            if previous is None:
+                total += current
+            elif current >= previous:
+                total += current - previous
+            else:
+                total += current
+            previous = current
+
+    return safe_int(total)
+
+
+def current_day_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    today = pd.Timestamp.now().strftime("%Y-%m-%d")
+    work = df.copy()
+
+    if "date" in work.columns:
+        return work[work["date"].astype(str) == today]
+
+    if "timestamp" in work.columns:
+        work["timestamp"] = pd.to_datetime(work["timestamp"], errors="coerce")
+        return work[work["timestamp"].dt.strftime("%Y-%m-%d") == today]
+
+    return work
+
+
 def is_recent_camera_row(row: dict[str, Any], max_age_seconds: int = 15) -> bool:
     timestamp = safe_str(row.get("timestamp", ""))
     if not timestamp:
@@ -486,6 +538,12 @@ def build_cameras_response(
         for _, row in latest_df.iterrows():
             latest_map[safe_str(row.get("camera_id"))] = row.to_dict()
 
+    today_df = current_day_df(read_table("minute_analytics"))
+    today_visitors_map: dict[str, int] = {}
+    if not today_df.empty and "camera_id" in today_df.columns:
+        for cam_id, group in today_df.groupby("camera_id"):
+            today_visitors_map[safe_str(cam_id)] = estimate_unique_visitors(group)
+
     config_cameras = load_cameras()
     if camera_id and camera_id != "all":
         config_cameras = [cam for cam in config_cameras if cam.get("camera_id") == camera_id]
@@ -509,6 +567,8 @@ def build_cameras_response(
                 "running": running,
                 "active_people": safe_int(latest.get("active_people", 0)),
                 "total_unique": safe_int(latest.get("total_unique_people", latest.get("total_unique", 0))),
+                "today_visitors": today_visitors_map.get(cam_id, 0),
+                "daily_visitors": today_visitors_map.get(cam_id, 0),
                 "risk_score": safe_int(latest.get("risk_score", 0)),
                 "fps": round(safe_float(latest.get("fps", 0)), 1),
                 "quality": round(safe_float(latest.get("data_quality_score", latest.get("quality", 0))), 1),
@@ -541,6 +601,8 @@ def build_summary(
         "kpis": {
             "active_people": 0,
             "new_unique_today": 0,
+            "today_visitors": 0,
+            "daily_visitors": 0,
             "total_unique": 0,
             "risk_score": 0,
             "fps": 0,
@@ -572,6 +634,7 @@ def build_summary(
     latest = df.iloc[-1].to_dict()
     today = latest.get("date")
     day_df = df[df["date"] == today] if "date" in df.columns and today is not None else df
+    today_visitors = estimate_unique_visitors(current_day_df(df))
 
     trend = []
     for _, row in df.tail(80).iterrows():
@@ -613,7 +676,9 @@ def build_summary(
         "latest": latest_clean,
         "kpis": {
             "active_people": safe_int(latest.get("active_people", 0)),
-            "new_unique_today": safe_int(day_df.get("new_unique_people", pd.Series([0])).sum()),
+            "new_unique_today": today_visitors,
+            "today_visitors": today_visitors,
+            "daily_visitors": today_visitors,
             "total_unique": safe_int(latest.get("total_unique_people", latest.get("total_unique", 0))),
             "risk_score": safe_int(latest.get("risk_score", 0)),
             "fps": round(safe_float(latest.get("fps", 0)), 1),

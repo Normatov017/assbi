@@ -63,6 +63,8 @@ type TimeRange = "live" | "today" | "week";
 type Kpis = {
   active_people?: number;
   new_unique_today?: number;
+  today_visitors?: number;
+  daily_visitors?: number;
   total_unique?: number;
   risk_score?: number;
   fps?: number;
@@ -127,6 +129,8 @@ type SummaryData = {
 const DEFAULT_KPIS: Kpis = {
   active_people: 0,
   new_unique_today: 0,
+  today_visitors: 0,
+  daily_visitors: 0,
   total_unique: 0,
   risk_score: 0,
   fps: 0,
@@ -386,10 +390,15 @@ export default function DashboardOverview() {
     };
   }, [apiStatus, kpis.risk_score, highRiskCameras, offlineCameras, avgCameraQuality]);
 
+  const todayVisitors =
+    numberValue(kpis.today_visitors) ||
+    numberValue(kpis.daily_visitors) ||
+    numberValue(kpis.new_unique_today);
+
   const kpiCards = useMemo(
     () => [
       {
-        title: "Active People",
+        title: "Live People",
         value: formatNumber(kpis.active_people),
         change: "Current live count",
         icon: Users,
@@ -398,9 +407,18 @@ export default function DashboardOverview() {
         borderColor: "border-cyan-500/20",
       },
       {
+        title: "Today Visitors",
+        value: formatNumber(todayVisitors),
+        change: "Entered today",
+        icon: TrendingUp,
+        color: "text-emerald-500",
+        bgColor: "bg-emerald-500/10",
+        borderColor: "border-emerald-500/20",
+      },
+      {
         title: "Total Unique",
         value: formatNumber(kpis.total_unique),
-        change: `Today +${formatNumber(kpis.new_unique_today)}`,
+        change: "Seen since detector start",
         icon: CheckCircle2,
         color: "text-green-500",
         bgColor: "bg-green-500/10",
@@ -470,6 +488,7 @@ export default function DashboardOverview() {
       totalCameras,
       avgCameraFps,
       avgCameraQuality,
+      todayVisitors,
     ]
   );
 
