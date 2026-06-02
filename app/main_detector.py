@@ -67,6 +67,7 @@ def parse_args():
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--clean-ui", action="store_true")
     parser.add_argument("--save-alerts", action="store_true")
+    parser.add_argument("--no-frame-output", action="store_true")
 
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
@@ -488,7 +489,8 @@ def main():
                 device,
             )
 
-        save_latest_frame(display_frame, args.camera_id)
+        if not args.no_frame_output:
+            save_latest_frame(display_frame, args.camera_id)
 
         if args.show:
             cv2.imshow("ASSBI Ultra", display_frame)

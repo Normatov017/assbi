@@ -50,7 +50,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-RUNNING_PROCESSES: dict[str, subprocess.Popen] = {}
+RUNNING_PROCESSES: dict[str, Any] = {}
 LAST_INGEST_FRAME_AT: dict[str, float] = {}
 LAST_INGEST_ANALYTICS_AT: dict[str, float] = {}
 
@@ -240,6 +240,8 @@ def required_permission_for_request(method: str, path: str) -> str:
         return "audit"
     if path.startswith("/api/compliance"):
         return "compliance"
+    if path.startswith("/api/maintenance") or path.startswith("/api/cleanup"):
+        return "manage_settings"
     if path.startswith("/api/settings") or path.startswith("/api/thresholds"):
         return "manage_settings" if method in {"POST", "PUT", "PATCH", "DELETE"} else "view"
     if path.startswith("/api/incidents") and method in {"POST", "PATCH", "DELETE"}:
@@ -518,86 +520,116 @@ def filter_df(
     return work
 
 
+def process_list(processes: Any) -> list[subprocess.Popen]:
+    if isinstance(processes, list):
+        return processes
+    return [processes] if processes else []
+
+
+def processes_alive(processes: Any) -> bool:
+    items = process_list(processes)
+    return bool(items) and all(process.poll() is None for process in items)
+
+
 def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "normal") -> bool:
     if not url:
         return False
 
     existing = RUNNING_PROCESSES.get(camera_id)
-    if existing and existing.poll() is None:
+    if existing and processes_alive(existing):
         return True
 
     if speed_mode not in ["slow", "normal", "fast"]:
         speed_mode = "normal"
 
     lightweight = os.getenv("ASSBI_LIGHTWEIGHT_DETECTOR", "0") == "1"
+    grabber_path = BASE_DIR / "app" / "frame_grabber.py"
     detector_path = BASE_DIR / "app" / ("frame_grabber.py" if lightweight else "main_detector.py")
     if not detector_path.exists():
         return False
 
-    cmd = [
-        sys.executable,
-        str(detector_path),
-        "--url",
-        url,
-        "--camera-id",
-        camera_id,
-        "--site",
-        site,
-    ]
+    def base_cmd(path: Path) -> list[str]:
+        return [
+            sys.executable,
+            str(path),
+            "--url",
+            url,
+            "--camera-id",
+            camera_id,
+            "--site",
+            site,
+        ]
+
+    def spawn(cmd: list[str], suffix: str) -> subprocess.Popen:
+        log_file = open(LOGS_DIR / f"{camera_id}_{suffix}.log", "a", encoding="utf-8")
+        print("[ASSBI] Started detector:", " ".join(cmd))
+        return subprocess.Popen(
+            cmd,
+            cwd=str(BASE_DIR),
+            stdout=log_file,
+            stderr=log_file,
+        )
 
     if lightweight:
+        cmd = base_cmd(detector_path)
         if is_rtsp_source(url):
-            cmd.extend([
-                "--width", "960",
-                "--height", "540",
-                "--interval", "0.12",
-                "--crop-top-ratio", "0.20",
-            ])
+            cmd.extend(["--width", "960", "--height", "540", "--interval", "0.08", "--crop-top-ratio", "0.20"])
         else:
-            cmd.extend(["--interval", "0.25"])
-    else:
-        cmd.extend(["--clean-ui", "--speed-mode", speed_mode])
+            cmd.extend(["--interval", "0.12"])
+        RUNNING_PROCESSES[camera_id] = spawn(cmd, "grabber")
+        return True
 
-    if not lightweight and is_rtsp_source(url):
+    live_source = not is_local_video(url)
+    processes: list[subprocess.Popen] = []
+
+    if live_source and grabber_path.exists():
+        grabber_cmd = base_cmd(grabber_path)
+        if is_rtsp_source(url):
+            grabber_cmd.extend(["--width", "960", "--height", "540", "--interval", "0.08", "--crop-top-ratio", "0.20"])
+        else:
+            grabber_cmd.extend(["--width", "640", "--height", "360", "--interval", "0.12"])
+        processes.append(spawn(grabber_cmd, "grabber"))
+
+    cmd = base_cmd(BASE_DIR / "app" / "main_detector.py")
+    cmd.extend(["--clean-ui", "--speed-mode", speed_mode])
+
+    if is_rtsp_source(url):
         cmd.extend([
             "--width", "960",
             "--height", "540",
             "--imgsz", "768",
             "--conf", "0.07",
-            "--detect-every", "3",
-            "--log-every", "3",
-            "--crop-top-ratio", "0.13",
+            "--detect-every", "8",
+            "--log-every", "1",
+            "--crop-top-ratio", "0.20",
+            "--no-frame-output",
         ])
-    elif not lightweight and is_local_video(url):
+    elif is_local_video(url):
         cmd.extend(["--detect-every", "3", "--log-every", "5"])
-    elif not lightweight:
-        cmd.append("--fast-mode")
+    else:
+        cmd.extend(["--fast-mode", "--detect-every", "8", "--log-every", "1", "--no-frame-output"])
 
-    log_file = open(LOGS_DIR / f"{camera_id}.log", "a", encoding="utf-8")
-
-    process = subprocess.Popen(
-        cmd,
-        cwd=str(BASE_DIR),
-        stdout=log_file,
-        stderr=log_file,
-    )
-
-    RUNNING_PROCESSES[camera_id] = process
-    print("[ASSBI] Started detector:", " ".join(cmd))
+    processes.append(spawn(cmd, "detector"))
+    RUNNING_PROCESSES[camera_id] = processes if len(processes) > 1 else processes[0]
 
     return True
 
 
 def stop_detector(camera_id: str) -> bool:
-    process = RUNNING_PROCESSES.get(camera_id)
+    stopped = False
 
-    if process and process.poll() is None:
-        process.terminate()
-        RUNNING_PROCESSES.pop(camera_id, None)
-        return True
+    for process in process_list(RUNNING_PROCESSES.get(camera_id)):
+        if process and process.poll() is None:
+            process.terminate()
+            stopped = True
+
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
     RUNNING_PROCESSES.pop(camera_id, None)
-    return False
+    return stopped
 
 
 def auto_start_cameras() -> None:
@@ -1935,6 +1967,34 @@ def export_executive_pdf(
 @app.post("/api/maintenance/cleanup")
 @app.post("/api/incidents/clear")
 def maintenance_cleanup(payload: Optional[dict[str, Any]] = None):
+    if isinstance(payload, dict) and payload.get("full_reset"):
+        init_db()
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn.execute("PRAGMA busy_timeout = 30000")
+        cur = conn.cursor()
+
+        for table in ["minute_analytics", "person_sessions", "incidents", "audit_log"]:
+            cur.execute(f"DELETE FROM {table}")
+
+        for table in ["minute_analytics", "person_sessions", "incidents", "audit_log"]:
+            cur.execute("DELETE FROM sqlite_sequence WHERE name=?", (table,))
+
+        conn.commit()
+        conn.close()
+
+        for path in FRAMES_DIR.glob("*.jpg"):
+            try:
+                path.unlink()
+            except Exception:
+                pass
+        for path in FRAMES_DIR.glob("*_boxes.json"):
+            try:
+                path.unlink()
+            except Exception:
+                pass
+
+        return {"ok": True, "mode": "full_reset"}
+
     keep_days = 30
     if isinstance(payload, dict):
         keep_days = safe_int(payload.get("keep_days", 30), 30)
