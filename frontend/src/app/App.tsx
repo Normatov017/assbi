@@ -22,6 +22,17 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
+  useEffect(() => {
+    try {
+      document.documentElement.classList.toggle(
+        "dark",
+        localStorage.getItem("assbi_theme") !== "light"
+      );
+    } catch {
+      document.documentElement.classList.add("dark");
+    }
+  }, []);
+
   function handleLogin(user?: unknown) {
     localStorage.setItem("assbi_auth", "true");
     if (user) {
@@ -75,8 +86,8 @@ export default function App() {
 
   if (isCheckingSession) {
     return (
-      <div className="dark min-h-screen w-full bg-[#070b1f] text-white flex items-center justify-center">
-        <div className="text-sm text-white/70">{t("common.checkingSession")}</div>
+      <div className="min-h-screen w-full bg-background text-foreground flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">{t("common.checkingSession")}</div>
       </div>
     );
   }
@@ -86,7 +97,7 @@ export default function App() {
   }
 
   return (
-    <div className="dark size-full">
+    <div className="size-full">
       <BrowserRouter>
         <Routes>
           <Route

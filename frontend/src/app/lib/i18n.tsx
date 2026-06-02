@@ -77,6 +77,8 @@ const dictionary: Dictionary = {
   "layout.adminUser": { uz: "Admin foydalanuvchi", ru: "Администратор", en: "Admin User" },
   "layout.administrator": { uz: "Administrator", ru: "Администратор", en: "Administrator" },
   "layout.notifications": { uz: "Bildirishnomalar", ru: "Уведомления", en: "Notifications" },
+  "layout.lightMode": { uz: "Light rejim", ru: "Светлая тема", en: "Light mode" },
+  "layout.darkMode": { uz: "Dark rejim", ru: "Темная тема", en: "Dark mode" },
   "layout.profile": { uz: "Profil", ru: "Профиль", en: "Profile" },
   "layout.settings": { uz: "Sozlamalar", ru: "Настройки", en: "Settings" },
   "layout.security": { uz: "Xavfsizlik", ru: "Безопасность", en: "Security" },

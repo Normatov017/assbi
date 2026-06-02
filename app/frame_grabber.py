@@ -15,6 +15,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 FRAMES_DIR = BASE_DIR / "frames"
 FRAMES_DIR.mkdir(exist_ok=True)
 
+os.environ.setdefault(
+    "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+    "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;500000",
+)
+
 PERSON_CLASS_ID = 0
 VEHICLE_CLASS_IDS = {2, 3, 5, 7}
 OBJECT_CLASS_IDS = {24, 26, 28, 63, 67}
@@ -51,7 +56,7 @@ def get_stream_url(url: str) -> str:
 def save_frame(frame, camera_id: str) -> None:
     final_path = FRAMES_DIR / f"{camera_id}.jpg"
     temp_path = FRAMES_DIR / f"{camera_id}_{os.getpid()}_tmp.jpg"
-    cv2.imwrite(str(temp_path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+    cv2.imwrite(str(temp_path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 78])
     temp_path.replace(final_path)
 
 
@@ -134,7 +139,8 @@ def main() -> None:
     while True:
         try:
             stream_url = get_stream_url(args.url)
-            cap = cv2.VideoCapture(stream_url)
+            cap = cv2.VideoCapture(stream_url, cv2.CAP_FFMPEG)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             if not cap.isOpened():
                 raise RuntimeError("Video source could not be opened")
@@ -155,7 +161,7 @@ def main() -> None:
                 time.sleep(args.interval)
         except Exception as exc:
             print(f"[ASSBI] frame_grabber retrying: {exc}", flush=True)
-            time.sleep(10)
+            time.sleep(3)
         finally:
             try:
                 cap.release()

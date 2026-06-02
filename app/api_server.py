@@ -16,8 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.graphics.charts.piecharts import Pie
+from reportlab.graphics.shapes import Drawing, String
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 try:
     from app.config import DB_PATH
@@ -604,9 +610,9 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     if lightweight:
         cmd = base_cmd(detector_path)
         if is_rtsp_source(url):
-            cmd.extend(["--width", "960", "--height", "540", "--interval", "0.08", "--crop-top-ratio", "0.20"])
+            cmd.extend(["--width", "960", "--height", "540", "--interval", "0.05", "--crop-top-ratio", "0.20"])
         else:
-            cmd.extend(["--interval", "0.12"])
+            cmd.extend(["--interval", "0.08"])
         RUNNING_PROCESSES[camera_id] = spawn(cmd, "grabber")
         return True
 
@@ -616,9 +622,9 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     if live_source and grabber_path.exists():
         grabber_cmd = base_cmd(grabber_path)
         if is_rtsp_source(url):
-            grabber_cmd.extend(["--width", "960", "--height", "540", "--interval", "0.08", "--crop-top-ratio", "0.20"])
+            grabber_cmd.extend(["--width", "960", "--height", "540", "--interval", "0.05", "--crop-top-ratio", "0.20"])
         else:
-            grabber_cmd.extend(["--width", "640", "--height", "360", "--interval", "0.12"])
+            grabber_cmd.extend(["--width", "640", "--height", "360", "--interval", "0.08"])
         processes.append(spawn(grabber_cmd, "grabber"))
 
     cmd = base_cmd(BASE_DIR / "app" / "main_detector.py")
@@ -1549,18 +1555,24 @@ def camera_frame(camera_id: str):
 def mjpeg_generator(camera_id: str):
     frame_path = FRAMES_DIR / f"{camera_id}.jpg"
     last_mtime = 0.0
+    last_frame = b""
+    last_yield = 0.0
 
     while True:
         if frame_path.exists():
             try:
                 current_mtime = frame_path.stat().st_mtime
                 if current_mtime != last_mtime:
-                    frame = frame_path.read_bytes()
-                    yield b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                    last_frame = frame_path.read_bytes()
+                    yield b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + last_frame + b"\r\n"
                     last_mtime = current_mtime
+                    last_yield = time.time()
+                elif last_frame and time.time() - last_yield >= 1.0:
+                    yield b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + last_frame + b"\r\n"
+                    last_yield = time.time()
             except Exception:
                 pass
-        time.sleep(0.25)
+        time.sleep(0.08)
 
 
 @app.get("/api/stream/{camera_id}")
@@ -1912,6 +1924,91 @@ def export_forecast_excel(
     )
 
 
+def executive_recommendation(kpis: dict[str, Any], incidents_count: int) -> tuple[str, str]:
+    risk = safe_int(kpis.get("risk_score", 0))
+    fps = safe_float(kpis.get("fps", 0))
+    quality = safe_float(kpis.get("quality", 0))
+
+    if risk >= 70 or incidents_count >= 5:
+        return (
+            "Critical Attention",
+            "Risk is elevated. Assign a supervisor to live monitoring, review incident causes, and increase physical presence near high-risk cameras.",
+        )
+    if risk >= 35 or fps < 5 or quality < 65:
+        return (
+            "Controlled Watch",
+            "Operations are stable but need attention. Improve stream quality/FPS, validate camera angles, and review the top risk camera every hour.",
+        )
+    return (
+        "Stable Operations",
+        "Current indicators are stable. Continue automated monitoring and use the camera leaderboard for routine operational review.",
+    )
+
+
+def make_bar_chart(title: str, labels: list[str], values: list[float], color: colors.Color) -> Drawing:
+    drawing = Drawing(480, 210)
+    drawing.add(String(0, 190, title, fontName="Helvetica-Bold", fontSize=13, fillColor=colors.HexColor("#111827")))
+
+    chart = VerticalBarChart()
+    chart.x = 36
+    chart.y = 34
+    chart.height = 130
+    chart.width = 410
+    chart.data = [values or [0]]
+    chart.categoryAxis.categoryNames = labels or ["No data"]
+    chart.categoryAxis.labels.fontSize = 7
+    chart.categoryAxis.labels.boxAnchor = "ne"
+    chart.categoryAxis.labels.angle = 30
+    chart.valueAxis.valueMin = 0
+    chart.valueAxis.valueMax = max(10, max(values or [0]) * 1.25)
+    chart.valueAxis.labels.fontSize = 7
+    chart.bars[0].fillColor = color
+    chart.bars[0].strokeColor = color
+    drawing.add(chart)
+    return drawing
+
+
+def make_pie_chart(title: str, labels: list[str], values: list[int]) -> Drawing:
+    drawing = Drawing(480, 210)
+    drawing.add(String(0, 190, title, fontName="Helvetica-Bold", fontSize=13, fillColor=colors.HexColor("#111827")))
+
+    clean_values = [safe_int(value, 0) for value in values]
+    if not any(clean_values):
+        labels = ["No objects"]
+        clean_values = [1]
+
+    pie = Pie()
+    pie.x = 72
+    pie.y = 34
+    pie.width = 135
+    pie.height = 135
+    pie.data = clean_values
+    pie.labels = labels
+    palette = ["#2563eb", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"]
+    for idx, color in enumerate(palette[: len(clean_values)]):
+        pie.slices[idx].fillColor = colors.HexColor(color)
+    drawing.add(pie)
+    return drawing
+
+
+def table_style(header_color: str = "#0f172a") -> TableStyle:
+    return TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(header_color)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]
+    )
+
+
 @app.get("/api/reports/executive/pdf")
 def export_executive_pdf(
     camera_id: Optional[str] = Query(default=None),
@@ -1924,92 +2021,173 @@ def export_executive_pdf(
     incidents_df = filter_df(read_table("incidents"), camera_id, start_date, end_date)
 
     pdf_path = EXPORTS_DIR / f"executive_report_{int(time.time())}.pdf"
-    doc = SimpleDocTemplate(str(pdf_path))
+    doc = SimpleDocTemplate(
+        str(pdf_path),
+        pagesize=A4,
+        rightMargin=0.45 * inch,
+        leftMargin=0.45 * inch,
+        topMargin=0.45 * inch,
+        bottomMargin=0.45 * inch,
+    )
     styles = getSampleStyleSheet()
-    story = []
-
-    story.append(Paragraph("ASSBI Executive Security Intelligence Report", styles["Title"]))
-    story.append(Spacer(1, 16))
-    story.append(Paragraph("Generated automatically by ASSBI Platform", styles["Normal"]))
-    story.append(Paragraph(f"Camera Filter: {camera_id or 'All'}", styles["Normal"]))
-    story.append(Paragraph(f"Date Range: {start_date or 'Any'} to {end_date or 'Any'}", styles["Normal"]))
-    story.append(Spacer(1, 20))
-
-    kpis = summary_data.get("kpis", {})
-    story.append(Paragraph("Executive KPI Summary", styles["Heading1"]))
-    story.append(
-        Paragraph(
-            f"""
-            Active People: {kpis.get('active_people', 0)}<br/>
-            Total Unique People: {kpis.get('total_unique', 0)}<br/>
-            Risk Score: {kpis.get('risk_score', 0)}%<br/>
-            Incidents: {kpis.get('incidents', 0)}<br/>
-            Laptops: {kpis.get('laptops', 0)}<br/>
-            Phones: {kpis.get('phones', 0)}<br/>
-            Vehicles: {kpis.get('vehicles', 0)}<br/>
-            Objects: {kpis.get('objects', 0)}
-            """,
-            styles["BodyText"],
+    styles.add(
+        ParagraphStyle(
+            name="ExecutiveTitle",
+            parent=styles["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=22,
+            leading=26,
+            textColor=colors.HexColor("#0f172a"),
+            spaceAfter=8,
         )
     )
+    styles.add(
+        ParagraphStyle(
+            name="Muted",
+            parent=styles["Normal"],
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor("#64748b"),
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="Section",
+            parent=styles["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=14,
+            leading=18,
+            textColor=colors.HexColor("#111827"),
+            spaceBefore=10,
+            spaceAfter=8,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="Callout",
+            parent=styles["BodyText"],
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor("#0f172a"),
+        )
+    )
+    story = []
 
-    story.append(Spacer(1, 20))
-    story.append(Paragraph("Camera Status Overview", styles["Heading1"]))
+    kpis = summary_data.get("kpis", {})
+    analytics_df = filter_df(read_table("minute_analytics"), camera_id, start_date, end_date)
+    if "timestamp" in analytics_df.columns:
+        analytics_df["timestamp"] = pd.to_datetime(analytics_df["timestamp"], errors="coerce")
+        analytics_df = analytics_df.sort_values("timestamp")
 
-    if not cameras_data:
-        story.append(Paragraph("No camera data available for selected filters.", styles["Normal"]))
-    else:
-        for cam in cameras_data:
-            status = "ONLINE" if cam.get("running") else "OFFLINE"
-            story.append(
-                Paragraph(
-                    f"""
-                    <b>{cam.get('site')}</b><br/>
-                    Camera ID: {cam.get('camera_id')}<br/>
-                    Status: {status}<br/>
-                    Active People: {cam.get('active_people', 0)}<br/>
-                    Risk Score: {cam.get('risk_score', 0)}%
-                    """,
-                    styles["BodyText"],
-                )
-            )
-            story.append(Spacer(1, 10))
+    story.append(Paragraph("ASSBI Executive Security Intelligence Report", styles["ExecutiveTitle"]))
+    story.append(
+        Paragraph(
+            f"Generated {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')} | Camera filter: {camera_id or 'All cameras'} | Period: {start_date or 'Any'} to {end_date or 'Any'}",
+            styles["Muted"],
+        )
+    )
+    story.append(Spacer(1, 12))
 
+    recommendation_title, recommendation = executive_recommendation(kpis, safe_int(len(incidents_df)))
+    story.append(
+        Table(
+            [[Paragraph(f"<b>AI Executive Recommendation: {recommendation_title}</b><br/>{recommendation}", styles["Callout"])]],
+            colWidths=[7.25 * inch],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#e0f2fe")),
+                    ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#0284c7")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 9),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+                ]
+            ),
+        )
+    )
+    story.append(Spacer(1, 12))
+
+    kpi_rows = [
+        ["Live People", f"{safe_int(kpis.get('active_people', 0)):,}", "Today Visitors", f"{safe_int(kpis.get('today_visitors', 0)):,}"],
+        ["Total Unique", f"{safe_int(kpis.get('total_unique', 0)):,}", "Risk Score", f"{safe_int(kpis.get('risk_score', 0))}%"],
+        ["Avg FPS", f"{safe_float(kpis.get('fps', 0)):.1f}", "Quality", f"{safe_float(kpis.get('quality', 0)):.1f}%"],
+        ["Objects", f"{safe_int(kpis.get('objects', 0)):,}", "Incidents", f"{safe_int(kpis.get('incidents', 0)):,}"],
+    ]
+    story.append(Paragraph("Board-Level KPI Snapshot", styles["Section"]))
+    kpi_table = Table(kpi_rows, colWidths=[1.55 * inch, 1.9 * inch, 1.55 * inch, 1.9 * inch])
+    kpi_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+                ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (1, 0), (1, -1), colors.HexColor("#dbeafe")),
+                ("BACKGROUND", (3, 0), (3, -1), colors.HexColor("#dcfce7")),
+                ("ALIGN", (1, 0), (1, -1), "CENTER"),
+                ("ALIGN", (3, 0), (3, -1), "CENTER"),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    story.append(kpi_table)
+    story.append(Spacer(1, 14))
+
+    trend_labels = [safe_str(item.get("time", "")) for item in summary_data.get("trend", [])[-8:]]
+    trend_values = [safe_float(item.get("people", item.get("active", 0))) for item in summary_data.get("trend", [])[-8:]]
+    risk_labels = [safe_str(cam.get("site") or cam.get("camera_id"))[:14] for cam in cameras_data[:8]]
+    risk_values = [safe_float(cam.get("risk_score", 0)) for cam in cameras_data[:8]]
+    story.append(make_bar_chart("People Flow Trend (latest readings)", trend_labels, trend_values, colors.HexColor("#2563eb")))
+    story.append(Spacer(1, 10))
+    story.append(make_bar_chart("Camera Risk Leaderboard", risk_labels, risk_values, colors.HexColor("#ef4444")))
     story.append(PageBreak())
-    story.append(Paragraph("Incident Analysis", styles["Heading1"]))
 
+    object_labels = ["Laptops", "Phones", "Vehicles", "Objects"]
+    object_values = [
+        safe_int(kpis.get("laptops", 0)),
+        safe_int(kpis.get("phones", 0)),
+        safe_int(kpis.get("vehicles", 0)),
+        safe_int(kpis.get("objects", 0)),
+    ]
+    story.append(make_pie_chart("Detected Asset & Object Breakdown", object_labels, object_values))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Camera Status Overview", styles["Section"]))
+    camera_rows = [["Camera", "Status", "People", "Risk", "FPS", "Quality"]]
+    for cam in cameras_data[:12]:
+        camera_rows.append(
+            [
+                Paragraph(f"<b>{safe_str(cam.get('site') or cam.get('camera_id'))}</b><br/><font size='7'>{safe_str(cam.get('camera_id'))}</font>", styles["BodyText"]),
+                "ONLINE" if cam.get("running") else "OFFLINE",
+                safe_int(cam.get("active_people", 0)),
+                f"{safe_int(cam.get('risk_score', 0))}%",
+                f"{safe_float(cam.get('fps', 0)):.1f}",
+                f"{safe_float(cam.get('quality', 0)):.1f}%",
+            ]
+        )
+    story.append(Table(camera_rows, colWidths=[2.25 * inch, 0.95 * inch, 0.8 * inch, 0.8 * inch, 0.75 * inch, 0.9 * inch], style=table_style()))
+    story.append(Spacer(1, 14))
+
+    story.append(Paragraph("Incident & Operational Notes", styles["Section"]))
     if incidents_df.empty:
-        story.append(Paragraph("No incidents recorded for selected filters.", styles["Normal"]))
+        story.append(Paragraph("No incidents recorded for the selected period. Continue normal monitoring.", styles["BodyText"]))
     else:
-        recent = incidents_df.tail(20)
-        for _, row in recent.iterrows():
-            story.append(
-                Paragraph(
-                    f"""
-                    <b>{row.get('incident_type', row.get('title', 'Incident'))}</b><br/>
-                    Severity: {row.get('severity', 'N/A')}<br/>
-                    Camera: {row.get('camera_id', 'N/A')}<br/>
-                    Description: {row.get('description', row.get('message', ''))}
-                    """,
-                    styles["BodyText"],
-                )
+        incident_rows = [["Type", "Severity", "Camera", "Message"]]
+        for _, row in incidents_df.tail(8).iterrows():
+            incident_rows.append(
+                [
+                    safe_str(row.get("incident_type", row.get("title", "Incident")))[:24],
+                    safe_str(row.get("severity", "N/A"))[:12],
+                    safe_str(row.get("camera_id", "N/A"))[:18],
+                    Paragraph(safe_str(row.get("description", row.get("message", "")))[:110], styles["BodyText"]),
+                ]
             )
-            story.append(Spacer(1, 8))
+        story.append(Table(incident_rows, colWidths=[1.45 * inch, 0.8 * inch, 1.25 * inch, 3.35 * inch], style=table_style("#7f1d1d")))
 
-    story.append(PageBreak())
-    story.append(Paragraph("AI Executive Recommendation", styles["Heading1"]))
-
-    risk = safe_int(kpis.get("risk_score", 0))
-    if risk >= 70:
-        recommendation = "High operational risk detected. Increase monitoring and security presence immediately."
-    elif risk >= 35:
-        recommendation = "Medium risk detected. Continue monitoring and review incident patterns."
-    else:
-        recommendation = "Low risk environment. Current monitoring strategy is sufficient."
-
-    story.append(Paragraph(recommendation, styles["BodyText"]))
-    story.append(Spacer(1, 20))
-    story.append(Paragraph("Generated by ASSBI AI Security Platform", styles["Italic"]))
+    story.append(Spacer(1, 18))
+    story.append(Paragraph("Prepared for executive review by ASSBI AI Surveillance & BI Platform.", styles["Muted"]))
 
     doc.build(story)
 

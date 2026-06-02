@@ -17,11 +17,13 @@ import {
   Menu,
   MessageSquare,
   MonitorDot,
+  Moon,
   ScanSearch,
   Search,
   Settings,
   Shield,
   ShieldCheck,
+  Sun,
   TrendingUp,
   User,
   Users,
@@ -224,6 +226,13 @@ function clearLoginStorage() {
 
 export default function DashboardLayout() {
   const { t } = useI18n();
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try {
+      return localStorage.getItem("assbi_theme") === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -240,6 +249,15 @@ export default function DashboardLayout() {
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    try {
+      localStorage.setItem("assbi_theme", theme);
+    } catch {
+      // ignore storage failures
+    }
+  }, [theme]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -675,6 +693,16 @@ export default function DashboardLayout() {
             </div>
 
             <LanguageSwitcher />
+
+            <Button
+              variant="outline"
+              size="icon"
+              title={theme === "dark" ? t("layout.lightMode") : t("layout.darkMode")}
+              onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+              className="border-border/50 bg-muted/20 text-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            </Button>
 
             <div className="text-sm text-muted-foreground hidden xl:block min-w-[210px] text-right">
               {now.toLocaleDateString("en-US", {
