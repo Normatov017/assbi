@@ -51,6 +51,8 @@ app.add_middleware(
 )
 
 RUNNING_PROCESSES: dict[str, subprocess.Popen] = {}
+LAST_INGEST_FRAME_AT: dict[str, float] = {}
+LAST_INGEST_ANALYTICS_AT: dict[str, float] = {}
 
 DEFAULT_SETTINGS = {
     "max_people": 50,
@@ -1346,6 +1348,7 @@ async def ingest_camera_frame(
     allow_create: bool = Form(False),
 ):
     cam_id = normalize_camera_id(camera_id)
+    monotonic_now = time.monotonic()
     now = pd.Timestamp.now()
     parsed = pd.to_datetime(timestamp, errors="coerce") if timestamp else now
     if pd.isna(parsed):
@@ -1363,10 +1366,17 @@ async def ingest_camera_frame(
             status_code=404,
         )
 
-    final_path = FRAMES_DIR / f"{cam_id}.jpg"
-    temp_path = FRAMES_DIR / f"{cam_id}_tmp.jpg"
-    temp_path.write_bytes(await frame.read())
-    temp_path.replace(final_path)
+    should_write_frame = monotonic_now - LAST_INGEST_FRAME_AT.get(cam_id, 0.0) >= 0.2
+    should_write_analytics = monotonic_now - LAST_INGEST_ANALYTICS_AT.get(cam_id, 0.0) >= 1.0
+
+    if should_write_frame:
+        final_path = FRAMES_DIR / f"{cam_id}.jpg"
+        temp_path = FRAMES_DIR / f"{cam_id}_tmp.jpg"
+        temp_path.write_bytes(await frame.read())
+        temp_path.replace(final_path)
+        LAST_INGEST_FRAME_AT[cam_id] = monotonic_now
+    else:
+        await frame.read()
 
     if not camera_exists:
         cameras_data.append(
@@ -1381,34 +1391,41 @@ async def ingest_camera_frame(
         )
         save_cameras(cameras_data)
 
-    insert_minute_analytics(
-        {
-            "timestamp": parsed.strftime("%Y-%m-%d %H:%M:%S"),
-            "date": parsed.strftime("%Y-%m-%d"),
-            "hour": int(parsed.hour),
-            "minute": int(parsed.minute),
-            "camera_id": cam_id,
-            "site": site,
-            "active_people": active_people,
-            "new_unique_people": new_unique_people,
-            "total_unique_people": total_unique_people,
-            "vehicle_count": vehicle_count,
-            "object_count": object_count,
-            "laptop_count": laptop_count,
-            "phone_count": phone_count,
-            "left_zone": left_zone,
-            "center_zone": center_zone,
-            "right_zone": right_zone,
-            "standing_count": standing_count,
-            "sitting_count": sitting_count,
-            "crowd_level": crowd_level,
-            "risk_score": risk_score,
-            "fps": fps,
-            "data_quality_score": data_quality_score,
-        }
-    )
+    if should_write_analytics:
+        insert_minute_analytics(
+            {
+                "timestamp": parsed.strftime("%Y-%m-%d %H:%M:%S"),
+                "date": parsed.strftime("%Y-%m-%d"),
+                "hour": int(parsed.hour),
+                "minute": int(parsed.minute),
+                "camera_id": cam_id,
+                "site": site,
+                "active_people": active_people,
+                "new_unique_people": new_unique_people,
+                "total_unique_people": total_unique_people,
+                "vehicle_count": vehicle_count,
+                "object_count": object_count,
+                "laptop_count": laptop_count,
+                "phone_count": phone_count,
+                "left_zone": left_zone,
+                "center_zone": center_zone,
+                "right_zone": right_zone,
+                "standing_count": standing_count,
+                "sitting_count": sitting_count,
+                "crowd_level": crowd_level,
+                "risk_score": risk_score,
+                "fps": fps,
+                "data_quality_score": data_quality_score,
+            }
+        )
+        LAST_INGEST_ANALYTICS_AT[cam_id] = monotonic_now
 
-    return {"ok": True, "camera_id": cam_id}
+    return {
+        "ok": True,
+        "camera_id": cam_id,
+        "frame_saved": should_write_frame,
+        "analytics_saved": should_write_analytics,
+    }
 
 
 @app.delete("/api/cameras/{camera_id}")
