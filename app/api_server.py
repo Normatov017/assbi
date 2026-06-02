@@ -550,12 +550,13 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
 
     if not lightweight and is_rtsp_source(url):
         cmd.extend([
-            "--width", "1280",
-            "--height", "720",
-            "--imgsz", "960",
+            "--width", "960",
+            "--height", "540",
+            "--imgsz", "768",
             "--conf", "0.07",
-            "--detect-every", "2",
+            "--detect-every", "3",
             "--log-every", "3",
+            "--crop-top-ratio", "0.13",
         ])
     elif not lightweight and is_local_video(url):
         cmd.extend(["--detect-every", "3", "--log-every", "5"])

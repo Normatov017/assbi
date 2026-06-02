@@ -71,6 +71,7 @@ def parse_args():
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
     parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--crop-top-ratio", type=float, default=0.0)
 
     parser.add_argument("--fast-mode", action="store_true")
     parser.add_argument(
@@ -269,6 +270,11 @@ def main():
         if not local_source:
             for _ in range(3 if args.fast_mode else 2):
                 cap.grab()
+
+        if args.crop_top_ratio > 0:
+            crop_pixels = int(frame.shape[0] * min(max(args.crop_top_ratio, 0.0), 0.4))
+            if 0 < crop_pixels < frame.shape[0] - 40:
+                frame = frame[crop_pixels:, :]
 
         frame = cv2.resize(frame, (args.width, args.height))
 
