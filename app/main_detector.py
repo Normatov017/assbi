@@ -237,8 +237,9 @@ def main():
     latest_boxes = []
     active_tracks = {}
 
-    all_unique = set()
-    new_unique = set()
+    total_unique_count = 0
+    new_unique_count = 0
+    previous_active_people = 0
 
     print("ASSBI Ultra detector started. Press q to stop.")
 
@@ -353,11 +354,7 @@ def main():
 
             if cls_id == PERSON_CLASS_ID:
                 if track_id is not None:
-                    first_seen = track_id not in all_unique
                     active_tracks[track_id] = now
-                    all_unique.add(track_id)
-                    if first_seen:
-                        new_unique.add(track_id)
 
                 person_posture = posture.estimate(x1, y1, x2, y2, h)
 
@@ -384,9 +381,14 @@ def main():
                 elif cls_id == 67:
                     phone_count += 1
 
-        # Live occupancy should match the current frame, while all_unique keeps
-        # the longer-running tracker history for the Unique Count KPI.
+        # Keep live occupancy exact and grow visitor totals only when occupancy rises.
         active_people = standing_count + sitting_count
+        active_delta = max(0, active_people - previous_active_people)
+        if active_delta:
+            total_unique_count += active_delta
+            new_unique_count += active_delta
+        total_unique_count = max(total_unique_count, active_people)
+        previous_active_people = active_people
 
         zone_peak = max(left_zone, center_zone, right_zone)
         level = crowd_level(active_people, thresholds)
@@ -424,8 +426,8 @@ def main():
                 "camera_id": args.camera_id,
                 "site": args.site,
                 "active_people": active_people,
-                "new_unique_people": len(new_unique),
-                "total_unique_people": len(all_unique),
+                "new_unique_people": new_unique_count,
+                "total_unique_people": total_unique_count,
                 "vehicle_count": vehicle_count,
                 "object_count": object_count,
                 "laptop_count": laptop_count,
@@ -446,13 +448,13 @@ def main():
             print(
                 f"[{timestamp}] "
                 f"active={active_people}, "
-                f"total={len(all_unique)}, "
+                f"total={total_unique_count}, "
                 f"risk={risk}, "
                 f"fps={fps:.1f}, "
                 f"speed={args.speed_mode}"
             )
 
-            new_unique.clear()
+            new_unique_count = 0
             last_log = now
 
         display_frame = frame.copy()
@@ -480,7 +482,7 @@ def main():
                 display_frame,
                 args,
                 active_people,
-                len(all_unique),
+                total_unique_count,
                 standing_count,
                 sitting_count,
                 laptop_count,
