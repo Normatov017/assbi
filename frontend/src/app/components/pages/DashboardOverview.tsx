@@ -27,7 +27,6 @@ import {
   CheckCircle2,
   Clock,
   Cpu,
-  Eye,
   Gauge,
   Laptop,
   Layers,
@@ -77,8 +76,6 @@ type Kpis = {
   vehicles?: number;
   objects?: number;
   incidents?: number;
-  standing?: number;
-  sitting?: number;
   cameras?: number;
   online_cameras?: number;
 };
@@ -122,7 +119,6 @@ type IncidentItem = {
 type SummaryData = {
   kpis?: Kpis;
   trend?: TrendItem[];
-  posture?: { name: string; value: number }[];
   incidents?: IncidentItem[];
   cameras?: CameraItem[];
   camera_health?: CameraItem[];
@@ -143,8 +139,6 @@ const DEFAULT_KPIS: Kpis = {
   vehicles: 0,
   objects: 0,
   incidents: 0,
-  standing: 0,
-  sitting: 0,
   cameras: 0,
   online_cameras: 0,
 };
@@ -295,14 +289,6 @@ export default function DashboardOverview() {
   const onlineCameras =
     numberValue(kpis.online_cameras) || cameras.filter((camera) => camera.running).length;
   const offlineCameras = Math.max(0, totalCameras - onlineCameras);
-
-  const posture = useMemo(() => {
-    if (Array.isArray(data?.posture) && data.posture.length > 0) return data.posture;
-    return [
-      { name: t("live.standing"), value: numberValue(kpis.standing) },
-      { name: t("live.sitting"), value: numberValue(kpis.sitting) },
-    ];
-  }, [data?.posture, kpis.standing, kpis.sitting, t]);
 
   const objectBreakdown = useMemo(() => {
     if (Array.isArray(data?.objects) && data.objects.length > 0) return data.objects;
@@ -956,52 +942,6 @@ export default function DashboardOverview() {
                     </div>
                   );
                 })
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Eye className="size-5 text-cyan-500" />
-                {t("dashboard.postureAnalytics")}
-              </CardTitle>
-            </CardHeader>
-
-            <CardContent>
-              {posture.every((item) => numberValue(item.value) === 0) ? (
-                <EmptyChart message={t("dashboard.postureNoData")} />
-              ) : (
-                <ResponsiveContainer width="100%" height={245}>
-                  <PieChart>
-                    <Pie data={posture} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} label={false}>
-                      {posture.map((_, index) => (
-                        <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 12,
-                        color: CHART_TEXT,
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-              {!posture.every((item) => numberValue(item.value) === 0) && (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {posture.map((item, index) => (
-                    <div key={item.name} className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="size-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
-                        <span className="text-xs text-muted-foreground">{item.name}</span>
-                      </div>
-                      <p className="text-lg font-semibold text-white mt-1">{formatNumber(item.value)}</p>
-                    </div>
-                  ))}
-                </div>
               )}
             </CardContent>
           </Card>

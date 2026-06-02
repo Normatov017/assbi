@@ -7,7 +7,6 @@ This ZIP combines your AI surveillance backend with the uploaded premium React d
 - RTSP camera detector
 - YOLO / RT-DETR support
 - Person tracking with BoT-SORT
-- Sitting / standing analytics
 - Laptop and phone detection
 - SQLite database
 - FastAPI backend API

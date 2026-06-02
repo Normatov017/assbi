@@ -166,7 +166,6 @@ const dictionary: Dictionary = {
   "dashboard.operationalScore": { uz: "Operatsion ball", ru: "Операционная оценка", en: "Operational score" },
   "dashboard.cameraHealth": { uz: "Kamera holati", ru: "Состояние камер", en: "Camera Health" },
   "dashboard.objectBreakdown": { uz: "Obyektlar taqsimoti", ru: "Разбивка объектов", en: "Object Breakdown" },
-  "dashboard.postureAnalytics": { uz: "Holat analitikasi", ru: "Аналитика поз", en: "Posture Analytics" },
   "dashboard.deviceAwareness": { uz: "Qurilmalar nazorati", ru: "Контроль устройств", en: "Device Awareness" },
   "dashboard.combinedScore": {
     uz: "Uptime, sifat, FPS va risk umumiy balli",
@@ -226,7 +225,6 @@ const dictionary: Dictionary = {
   "dashboard.highestRisk": { uz: "Eng yuqori risk", ru: "Самый высокий риск", en: "Highest Risk" },
   "dashboard.riskLeaderboard": { uz: "Risk reytingi", ru: "Рейтинг риска", en: "Risk Leaderboard" },
   "dashboard.noCameraData": { uz: "Kamera ma’lumoti mavjud emas", ru: "Данных камер пока нет", en: "No camera data available" },
-  "dashboard.postureNoData": { uz: "Holat ma’lumoti hali mavjud emas.", ru: "Данных о позах пока нет.", en: "Posture data is not available yet." },
   "dashboard.laptops": { uz: "Noutbuklar", ru: "Ноутбуки", en: "Laptops" },
   "dashboard.phones": { uz: "Telefonlar", ru: "Телефоны", en: "Phones" },
   "dashboard.vehicles": { uz: "Transportlar", ru: "Транспорт", en: "Vehicles" },
@@ -292,8 +290,6 @@ const dictionary: Dictionary = {
   "live.livePeople": { uz: "Live odamlar", ru: "Люди сейчас", en: "Live People" },
   "live.todayVisitors": { uz: "Bugungi kirganlar", ru: "Посетители сегодня", en: "Today Visitors" },
   "live.totalUnique": { uz: "Umumiy unique", ru: "Всего уникальных", en: "Total Unique" },
-  "live.standing": { uz: "Tik turgan", ru: "Стоят", en: "Standing" },
-  "live.sitting": { uz: "O‘tirgan", ru: "Сидят", en: "Sitting" },
   "live.frameUnavailable": { uz: "Kamera frame mavjud emas", ru: "Кадр камеры недоступен", en: "Camera frame not available" },
   "live.frameUnavailableHint": {
     uz: "Camera API ishlayotganini va frame_url qaytayotganini tekshiring.",
@@ -526,7 +522,6 @@ const bridgeTranslations: Record<string, Record<Language, string>> = {
   "System stable": { uz: "Tizim barqaror", ru: "Система стабильна", en: "System stable" },
   "AI Executive Summary": { uz: "AI boshqaruv xulosasi", ru: "Исполнительная AI-сводка", en: "AI Executive Summary" },
   "Platform Control Score": { uz: "Platforma nazorat balli", ru: "Контрольная оценка платформы", en: "Platform Control Score" },
-  "Posture Analytics": { uz: "Holat analitikasi", ru: "Аналитика поз", en: "Posture Analytics" },
   "Device Awareness": { uz: "Qurilmalar nazorati", ru: "Контроль устройств", en: "Device Awareness" },
   "Camera Health": { uz: "Kamera holati", ru: "Состояние камер", en: "Camera Health" },
   "Object Breakdown": { uz: "Obyektlar taqsimoti", ru: "Разбивка объектов", en: "Object Breakdown" },

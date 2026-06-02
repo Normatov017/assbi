@@ -5,10 +5,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -79,11 +75,6 @@ export default function CrowdAnalytics() {
     { zone: "Right", value: 0 },
   ];
 
-  const postureData = summary?.posture || [
-    { name: "Standing", value: 0 },
-    { name: "Sitting", value: 0 },
-  ];
-
   const totalPeople = cameras.reduce(
     (sum, cam) => sum + (cam.active_people || 0),
     0
@@ -152,7 +143,7 @@ export default function CrowdAnalytics() {
             Crowd Analytics
           </h1>
           <p className="text-muted-foreground">
-            Real-time crowd density, posture, zone, risk and AI insights
+            Real-time crowd density, zone, risk and AI insights
           </p>
         </div>
 
@@ -354,36 +345,6 @@ export default function CrowdAnalytics() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="size-5 text-green-500" />
-              Standing vs Sitting
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={postureData}
-                  dataKey="value"
-                  nameKey="name"
-                  outerRadius={105}
-                  label
-                >
-                  {postureData.map((entry: any, index: number) => (
-                    <Cell
-                      key={entry.name}
-                      fill={index === 0 ? "#22c55e" : "#06b6d4"}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
       </div>
 
       <Card>

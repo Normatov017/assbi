@@ -71,8 +71,6 @@ type CameraData = {
   phones?: number;
   vehicles?: number;
   objects?: number;
-  standing?: number;
-  sitting?: number;
 };
 
 type IncidentData = {

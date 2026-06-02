@@ -78,8 +78,6 @@ type CameraData = {
   phones?: number;
   vehicles?: number;
   objects?: number;
-  standing?: number;
-  sitting?: number;
   created_at?: string;
   timestamp?: string;
 };

@@ -476,7 +476,7 @@ def normalize_total_unique(camera_id: str, active_people: int, new_unique_people
     incoming = max(0, safe_int(total_unique_people, 0))
 
     if previous <= 0:
-        return max(active, min(incoming, active + new_unique))
+        return active
 
     return max(previous, active)
 
@@ -754,8 +754,6 @@ def build_cameras_response(
                 "phones": safe_int(latest.get("phone_count", latest.get("phones", 0))),
                 "vehicles": safe_int(latest.get("vehicle_count", latest.get("vehicles", 0))),
                 "objects": safe_int(latest.get("object_count", latest.get("objects", 0))),
-                "standing": safe_int(latest.get("standing_count", latest.get("standing", 0))),
-                "sitting": safe_int(latest.get("sitting_count", latest.get("sitting", 0))),
                 "created_at": safe_str(latest.get("timestamp", "")),
                 "timestamp": safe_str(latest.get("timestamp", "")),
                 "frame_url": f"/api/frame/{cam_id}",
@@ -790,12 +788,9 @@ def build_summary(
             "vehicles": 0,
             "objects": 0,
             "incidents": safe_int(len(incidents_df)),
-            "standing": 0,
-            "sitting": 0,
         },
         "trend": [],
         "zones": [],
-        "posture": [],
         "incidents": json_safe_records(incidents_df.tail(20)),
         "cameras": build_cameras_response(camera_id, start_date, end_date),
     }
@@ -813,6 +808,17 @@ def build_summary(
     today = latest.get("date")
     day_df = df[df["date"] == today] if "date" in df.columns and today is not None else df
     today_visitors = estimate_unique_visitors(current_day_df(df))
+    current_by_camera = latest_by_camera(df)
+
+    def current_sum(column: str) -> int:
+        if current_by_camera.empty or column not in current_by_camera.columns:
+            return 0
+        return safe_int(current_by_camera[column].fillna(0).sum())
+
+    def current_average(column: str) -> float:
+        if current_by_camera.empty or column not in current_by_camera.columns:
+            return 0.0
+        return safe_float(current_by_camera[column].fillna(0).mean())
 
     trend = []
     for _, row in df.tail(80).iterrows():
@@ -840,11 +846,6 @@ def build_summary(
         {"zone": "Right", "value": safe_int(day_df.get("right_zone", pd.Series([0])).sum())},
     ]
 
-    posture = [
-        {"name": "Standing", "value": safe_int(day_df.get("standing_count", pd.Series([0])).sum())},
-        {"name": "Sitting", "value": safe_int(day_df.get("sitting_count", pd.Series([0])).sum())},
-    ]
-
     latest_clean = {
         key: value.isoformat() if hasattr(value, "isoformat") else value
         for key, value in latest.items()
@@ -853,25 +854,22 @@ def build_summary(
     return {
         "latest": latest_clean,
         "kpis": {
-            "active_people": safe_int(latest.get("active_people", 0)),
+            "active_people": current_sum("active_people"),
             "new_unique_today": today_visitors,
             "today_visitors": today_visitors,
             "daily_visitors": today_visitors,
-            "total_unique": safe_int(latest.get("total_unique_people", latest.get("total_unique", 0))),
-            "risk_score": safe_int(latest.get("risk_score", 0)),
-            "fps": round(safe_float(latest.get("fps", 0)), 1),
-            "quality": round(safe_float(latest.get("data_quality_score", latest.get("quality", 0))), 1),
-            "laptops": safe_int(latest.get("laptop_count", latest.get("laptops", 0))),
-            "phones": safe_int(latest.get("phone_count", latest.get("phones", 0))),
-            "vehicles": safe_int(latest.get("vehicle_count", latest.get("vehicles", 0))),
-            "objects": safe_int(latest.get("object_count", latest.get("objects", 0))),
+            "total_unique": current_sum("total_unique_people"),
+            "risk_score": safe_int(round(current_average("risk_score"))),
+            "fps": round(current_average("fps"), 1),
+            "quality": round(current_average("data_quality_score"), 1),
+            "laptops": current_sum("laptop_count"),
+            "phones": current_sum("phone_count"),
+            "vehicles": current_sum("vehicle_count"),
+            "objects": current_sum("object_count"),
             "incidents": safe_int(len(incidents_df)),
-            "standing": safe_int(latest.get("standing_count", latest.get("standing", 0))),
-            "sitting": safe_int(latest.get("sitting_count", latest.get("sitting", 0))),
         },
         "trend": trend,
         "zones": zones,
-        "posture": posture,
         "incidents": json_safe_records(incidents_df.tail(20).sort_values("id", ascending=False) if "id" in incidents_df.columns else incidents_df.tail(20)),
         "cameras": build_cameras_response(camera_id, start_date, end_date),
     }
@@ -1026,7 +1024,7 @@ def build_pipeline_architecture() -> dict[str, Any]:
             {"id": "sources", "title": "Video Sources", "detail": "YouTube, RTSP, local video and webcam streams"},
             {"id": "capture", "title": "OpenCV Capture", "detail": "Low-latency frame capture, resizing and frame buffering"},
             {"id": "ai", "title": "YOLO AI Detection", "detail": "People, vehicle, laptop, phone and object detection"},
-            {"id": "analytics", "title": "Analytics Engine", "detail": "Crowd count, posture, zone, risk and quality scoring"},
+            {"id": "analytics", "title": "Analytics Engine", "detail": "Crowd count, zone, risk and quality scoring"},
             {"id": "storage", "title": "SQLite BI Storage", "detail": "Structured facts, incidents, audit log and settings"},
             {"id": "api", "title": "FastAPI Services", "detail": "Realtime JSON API, reports, auth and compliance endpoints"},
             {"id": "dashboard", "title": "BI Dashboards", "detail": "KPI cards, charts, reports, chatbot and operator workflows"},
@@ -1504,8 +1502,8 @@ async def ingest_camera_frame(
                 "left_zone": left_zone,
                 "center_zone": center_zone,
                 "right_zone": right_zone,
-                "standing_count": standing_count,
-                "sitting_count": sitting_count,
+                "standing_count": 0,
+                "sitting_count": 0,
                 "crowd_level": crowd_level,
                 "risk_score": risk_score,
                 "fps": fps,
@@ -2188,7 +2186,7 @@ def ai_chat(req: ChatRequest):
     if "object" in message:
         return {"reply": f"{kpis.get('objects', 0)} objects are currently detected."}
     if "standing" in message or "sitting" in message or "posture" in message:
-        return {"reply": f"Posture analytics: {kpis.get('standing', 0)} standing people and {kpis.get('sitting', 0)} sitting people detected."}
+        return {"reply": "Standing and sitting analytics are disabled because they were not reliable for the current camera angle. Live people count is based on detected person boxes."}
     if "trend" in message or "analytics" in message:
         if df_analytics.empty:
             return {"reply": "No analytics data is available yet."}
@@ -2198,6 +2196,6 @@ def ai_chat(req: ChatRequest):
         "reply": (
             "I can answer questions such as: highest risk camera, busiest camera, "
             "security summary, incidents, people count, laptops, phones, vehicles, "
-            "objects, posture, camera status and analytics trend."
+            "objects, camera status and analytics trend."
         )
     }

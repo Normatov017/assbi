@@ -19,7 +19,6 @@ from database import (
 from modules.analytics import zone_name, crowd_level, risk_score, data_quality_score
 from modules.privacy import blur_people_regions
 from modules.abandoned import AbandonedObjectDetector
-from modules.posture import PostureEstimator
 from modules.trails import TrailManager
 from modules.suspicious_behavior import SuspiciousBehaviorDetector
 from modules.advanced_ai import (
@@ -137,8 +136,6 @@ def draw_panel(
     args,
     active_people,
     total_unique,
-    standing_count,
-    sitting_count,
     laptop_count,
     phone_count,
     vehicle_count,
@@ -156,9 +153,8 @@ def draw_panel(
 
     cv2.putText(frame, f"CAMERA: {args.camera_id}", (35, h - 205), cv2.FONT_HERSHEY_SIMPLEX, 0.66, (0, 255, 255), 2)
     cv2.putText(frame, f"ACTIVE: {active_people}  UNIQUE: {total_unique}", (35, h - 172), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (255, 255, 255), 2)
-    cv2.putText(frame, f"STANDING: {standing_count}  SITTING: {sitting_count}", (35, h - 139), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (255, 255, 255), 2)
-    cv2.putText(frame, f"LAPTOPS: {laptop_count}  PHONES: {phone_count}", (35, h - 106), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (255, 255, 255), 2)
-    cv2.putText(frame, f"VEHICLES: {vehicle_count}  OBJECTS: {object_count}", (35, h - 73), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (255, 255, 255), 2)
+    cv2.putText(frame, f"LAPTOPS: {laptop_count}  PHONES: {phone_count}", (35, h - 139), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (255, 255, 255), 2)
+    cv2.putText(frame, f"VEHICLES: {vehicle_count}  OBJECTS: {object_count}", (35, h - 106), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (255, 255, 255), 2)
     cv2.putText(frame, f"RISK: {risk}%  FPS: {fps:.1f}  QUALITY: {quality}%", (35, h - 42), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 100, 255), 2)
     cv2.putText(frame, f"DEVICE: {device}  MODEL: {args.model}", (35, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (180, 180, 180), 1)
 
@@ -226,7 +222,6 @@ def main():
     video_start_wall, video_start_msec = reset_local_video_clock()
 
     abandoned = AbandonedObjectDetector()
-    posture = PostureEstimator()
     trails = TrailManager()
     suspicious = SuspiciousBehaviorDetector(thresholds["suspicious_seconds"])
 
@@ -298,8 +293,7 @@ def main():
         center_zone = 0
         right_zone = 0
 
-        standing_count = 0
-        sitting_count = 0
+        person_count = 0
 
         if frame_index % args.detect_every == 0:
             latest_boxes = []
@@ -352,15 +346,9 @@ def main():
             zone = zone_name(cx, w)
 
             if cls_id == PERSON_CLASS_ID:
+                person_count += 1
                 if track_id is not None:
                     active_tracks[track_id] = now
-
-                person_posture = posture.estimate(x1, y1, x2, y2, h)
-
-                if person_posture == "standing":
-                    standing_count += 1
-                else:
-                    sitting_count += 1
 
                 if zone == "LEFT":
                     left_zone += 1
@@ -381,7 +369,7 @@ def main():
                     phone_count += 1
 
         # Keep live occupancy exact and grow visitor totals only when occupancy rises.
-        active_people = standing_count + sitting_count
+        active_people = person_count
         active_delta = max(0, active_people - total_unique_count)
         if active_delta:
             total_unique_count += active_delta
@@ -432,8 +420,8 @@ def main():
                 "left_zone": left_zone,
                 "center_zone": center_zone,
                 "right_zone": right_zone,
-                "standing_count": standing_count,
-                "sitting_count": sitting_count,
+                "standing_count": 0,
+                "sitting_count": 0,
                 "crowd_level": level,
                 "risk_score": risk,
                 "fps": round(fps, 2),
@@ -480,8 +468,6 @@ def main():
                 args,
                 active_people,
                 total_unique_count,
-                standing_count,
-                sitting_count,
                 laptop_count,
                 phone_count,
                 vehicle_count,

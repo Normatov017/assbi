@@ -63,8 +63,6 @@ interface CameraType {
   phones?: number;
   vehicles?: number;
   objects?: number;
-  standing?: number;
-  sitting?: number;
 }
 
 type FilterMode = "all" | "online" | "offline" | "high-risk" | "low-quality";
@@ -740,7 +738,7 @@ export default function LiveSurveillance() {
             </CardHeader>
 
             <CardContent className="p-5">
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <MetricBox
                   label={t("live.livePeople")}
                   value={selectedCamera?.active_people || 0}
@@ -752,14 +750,6 @@ export default function LiveSurveillance() {
                 <MetricBox
                   label={t("live.totalUnique")}
                   value={formatNumber(selectedCamera?.total_unique)}
-                />
-                <MetricBox
-                  label={t("live.standing")}
-                  value={selectedCamera?.standing || 0}
-                />
-                <MetricBox
-                  label={t("live.sitting")}
-                  value={selectedCamera?.sitting || 0}
                 />
               </div>
 
@@ -829,7 +819,7 @@ export default function LiveSurveillance() {
                       </Badge>
                     </div>
 
-                    <div className="absolute left-4 right-4 bottom-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div className="absolute left-4 right-4 bottom-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <OverlayMetric
                         label={t("common.people")}
                         value={selectedCamera.active_people || 0}
@@ -841,14 +831,6 @@ export default function LiveSurveillance() {
                       <OverlayMetric
                         label={t("live.total")}
                         value={formatNumber(selectedCamera.total_unique)}
-                      />
-                      <OverlayMetric
-                        label={t("live.standing")}
-                        value={selectedCamera.standing || 0}
-                      />
-                      <OverlayMetric
-                        label={t("live.sitting")}
-                        value={selectedCamera.sitting || 0}
                       />
                     </div>
                   </>
@@ -1373,11 +1355,10 @@ export default function LiveSurveillance() {
                 </div>
               )}
 
-              <div className="absolute left-4 right-4 bottom-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="absolute left-4 right-4 bottom-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <OverlayMetric label={t("common.live")} value={selectedCamera.active_people || 0} />
                 <OverlayMetric label={t("live.today")} value={formatNumber(getTodayVisitors(selectedCamera))} />
                 <OverlayMetric label={t("live.total")} value={formatNumber(selectedCamera.total_unique)} />
-                <OverlayMetric label={t("live.standing")} value={selectedCamera.standing || 0} />
                 <OverlayMetric label={t("common.objects")} value={getTotalObjects(selectedCamera)} />
                 <OverlayMetric label="FPS" value={numberValue(selectedCamera.fps).toFixed(1)} />
               </div>
