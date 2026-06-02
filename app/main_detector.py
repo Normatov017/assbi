@@ -239,7 +239,6 @@ def main():
 
     total_unique_count = 0
     new_unique_count = 0
-    previous_active_people = 0
 
     print("ASSBI Ultra detector started. Press q to stop.")
 
@@ -383,12 +382,10 @@ def main():
 
         # Keep live occupancy exact and grow visitor totals only when occupancy rises.
         active_people = standing_count + sitting_count
-        active_delta = max(0, active_people - previous_active_people)
+        active_delta = max(0, active_people - total_unique_count)
         if active_delta:
             total_unique_count += active_delta
             new_unique_count += active_delta
-        total_unique_count = max(total_unique_count, active_people)
-        previous_active_people = active_people
 
         zone_peak = max(left_zone, center_zone, right_zone)
         level = crowd_level(active_people, thresholds)

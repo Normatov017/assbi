@@ -478,8 +478,7 @@ def normalize_total_unique(camera_id: str, active_people: int, new_unique_people
     if previous <= 0:
         return max(active, min(incoming, active + new_unique))
 
-    max_reasonable_next = previous + max(active, new_unique, 1)
-    return max(previous, min(incoming, max_reasonable_next))
+    return max(previous, active)
 
 
 def current_day_df(df: pd.DataFrame) -> pd.DataFrame:
