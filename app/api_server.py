@@ -7,6 +7,8 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Optional
 
@@ -2268,6 +2270,188 @@ def maintenance_cleanup(payload: Optional[dict[str, Any]] = None):
     return {"ok": True, "message": f"Cleanup finished. Kept last {keep_days} days."}
 
 
+
+def find_peak_period(df_analytics: pd.DataFrame) -> Optional[dict[str, Any]]:
+    if df_analytics.empty or "timestamp" not in df_analytics.columns:
+        return None
+
+    work = df_analytics.copy()
+    work["timestamp"] = pd.to_datetime(work["timestamp"], errors="coerce")
+    work = work.dropna(subset=["timestamp"])
+    if work.empty:
+        return None
+
+    if "active_people" not in work.columns:
+        return None
+
+    work["active_people"] = pd.to_numeric(work["active_people"], errors="coerce").fillna(0)
+    if "risk_score" in work.columns:
+        work["risk_score"] = pd.to_numeric(work["risk_score"], errors="coerce").fillna(0)
+    else:
+        work["risk_score"] = 0
+    peak_row = work.sort_values(["active_people", "timestamp"], ascending=[False, False]).iloc[0]
+    return {
+        "time": peak_row["timestamp"].strftime("%Y-%m-%d %H:%M"),
+        "people": safe_int(peak_row.get("active_people", 0)),
+        "risk": safe_int(peak_row.get("risk_score", 0)),
+    }
+
+
+def build_chat_context(
+    summary_data: dict[str, Any],
+    camera_data: list[dict[str, Any]],
+    df_analytics: pd.DataFrame,
+    df_incidents: pd.DataFrame,
+) -> dict[str, Any]:
+    kpis = summary_data.get("kpis", {}) if isinstance(summary_data, dict) else {}
+    peak = find_peak_period(df_analytics)
+
+    cameras = []
+    for camera in camera_data[:12]:
+        cameras.append(
+            {
+                "camera_id": camera.get("camera_id"),
+                "site": camera.get("site"),
+                "type": camera.get("type"),
+                "online": bool(camera.get("running")),
+                "active_people": safe_int(camera.get("active_people", 0)),
+                "today_visitors": safe_int(camera.get("today_visitors", 0)),
+                "total_unique": safe_int(camera.get("total_unique", 0)),
+                "objects": safe_int(camera.get("objects", 0)),
+                "vehicles": safe_int(camera.get("vehicles", 0)),
+                "phones": safe_int(camera.get("phones", 0)),
+                "laptops": safe_int(camera.get("laptops", 0)),
+                "fps": safe_float(camera.get("fps", 0)),
+                "quality": safe_int(camera.get("quality", 0)),
+                "risk_score": safe_int(camera.get("risk_score", 0)),
+            }
+        )
+
+    incidents: list[dict[str, Any]] = []
+    if not df_incidents.empty:
+        work = df_incidents.copy()
+        if "timestamp" in work.columns:
+            work["timestamp"] = pd.to_datetime(work["timestamp"], errors="coerce")
+            work = work.sort_values("timestamp", ascending=False)
+        for _, row in work.head(10).iterrows():
+            incidents.append(
+                {
+                    "timestamp": str(row.get("timestamp", "")),
+                    "camera_id": row.get("camera_id"),
+                    "type": row.get("type"),
+                    "severity": row.get("severity"),
+                    "message": row.get("message"),
+                    "status": row.get("status"),
+                }
+            )
+
+    trend: list[dict[str, Any]] = []
+    if not df_analytics.empty:
+        work = df_analytics.copy()
+        if "timestamp" in work.columns:
+            work["timestamp"] = pd.to_datetime(work["timestamp"], errors="coerce")
+            work = work.sort_values("timestamp", ascending=False)
+        for _, row in work.head(30).iterrows():
+            trend.append(
+                {
+                    "timestamp": str(row.get("timestamp", "")),
+                    "camera_id": row.get("camera_id"),
+                    "active_people": safe_int(row.get("active_people", 0)),
+                    "today_visitors": safe_int(row.get("today_visitors", 0)),
+                    "total_unique": safe_int(row.get("total_unique", 0)),
+                    "objects": safe_int(row.get("objects", 0)),
+                    "vehicles": safe_int(row.get("vehicles", 0)),
+                    "risk_score": safe_int(row.get("risk_score", 0)),
+                    "fps": safe_float(row.get("fps", 0)),
+                    "quality": safe_int(row.get("quality", 0)),
+                }
+            )
+
+    return {
+        "generated_at": pd.Timestamp.now().isoformat(),
+        "kpis": {
+            "active_people": safe_int(kpis.get("active_people", 0)),
+            "today_visitors": safe_int(kpis.get("today_visitors", 0)),
+            "total_unique": safe_int(kpis.get("total_unique", 0)),
+            "objects": safe_int(kpis.get("objects", 0)),
+            "vehicles": safe_int(kpis.get("vehicles", 0)),
+            "phones": safe_int(kpis.get("phones", 0)),
+            "laptops": safe_int(kpis.get("laptops", 0)),
+            "risk_score": safe_int(kpis.get("risk_score", 0)),
+            "fps": safe_float(kpis.get("fps", 0)),
+            "quality": safe_int(kpis.get("quality", 0)),
+            "incidents": safe_int(kpis.get("incidents", 0)),
+        },
+        "peak_period": peak,
+        "cameras": cameras,
+        "recent_incidents": incidents,
+        "recent_trend": trend,
+        "notes": [
+            "Standing and sitting analytics were removed because they were unreliable for the camera angles.",
+            "Live people means current detected people. Today visitors and total unique are visit counters from tracking data.",
+        ],
+    }
+
+
+def get_openai_api_key() -> str:
+    for key_name in ("OPENAI_API_KEY", "ASSBI_OPENAI_API_KEY"):
+        value = os.getenv(key_name, "").strip()
+        if value:
+            return value
+    try:
+        return str(load_settings().get("openai_api_key", "")).strip()
+    except Exception:
+        return ""
+
+
+def ask_openai_assistant(user_message: str, context: dict[str, Any]) -> Optional[str]:
+    api_key = get_openai_api_key()
+    if not api_key:
+        return None
+
+    system_prompt = (
+        "You are the ASSBI Platform AI assistant. Answer naturally in the same language as the user; "
+        "if the user writes Uzbek, use Uzbek Latin. Use the provided ASSBI JSON context for questions "
+        "about cameras, people counts, peak time, risk, incidents, objects, FPS, quality, reports and operations. "
+        "Do not invent database values. If the context is insufficient, say exactly what is missing and give the "
+        "best available answer. Keep answers concise, practical and executive-friendly."
+    )
+    payload = {
+        "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    "ASSBI_CONTEXT_JSON:\n"
+                    + json.dumps(context, ensure_ascii=False, default=str)[:18000]
+                    + "\n\nUSER_QUESTION:\n"
+                    + user_message
+                ),
+            },
+        ],
+        "temperature": 0.2,
+        "max_tokens": 700,
+    }
+
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=18) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return reply.strip() or None
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, KeyError, IndexError, json.JSONDecodeError):
+        return None
+
+
 @app.delete("/api/cleanup/demo")
 def cleanup_demo_data():
     return maintenance_cleanup({"keep_days": 9999})
@@ -2275,7 +2459,8 @@ def cleanup_demo_data():
 
 @app.post("/api/chat")
 def ai_chat(req: ChatRequest):
-    message = req.message.lower().strip()
+    original_message = req.message.strip()
+    message = original_message.lower()
     summary_data = build_summary()
     kpis = summary_data.get("kpis", {})
     camera_data = build_cameras_response()
@@ -2284,6 +2469,38 @@ def ai_chat(req: ChatRequest):
 
     if not message:
         return {"reply": "Please ask something about people, risk, cameras, incidents, objects or analytics."}
+
+    ai_reply = ask_openai_assistant(
+        original_message,
+        build_chat_context(summary_data, camera_data, df_analytics, df_incidents),
+    )
+    if ai_reply:
+        return {"reply": ai_reply, "source": "openai"}
+
+    if message in {"hi", "hello", "hey", "salom", "assalomu alaykum", "salam"}:
+        return {
+            "reply": (
+                "Salom! ASSBI bo‘yicha yordam beraman. OpenAI token ulangan bo‘lsa, "
+                "istalgan savolga kengroq javob beraman; hozir esa kamera, risk, odamlar, "
+                "obyektlar va analytics bo‘yicha asosiy savollarga javob bera olaman."
+            ),
+            "source": "fallback",
+        }
+
+    if "peak" in message or "pik" in message or "eng ko'p" in message or "eng kop" in message:
+        peak = find_peak_period(df_analytics)
+        if peak:
+            return {
+                "reply": (
+                    f"Eng gavjum vaqt: {peak['time']} atrofida. Shu paytda live odamlar "
+                    f"soni {peak['people']} bo‘lgan, risk {peak['risk']}%."
+                ),
+                "source": "fallback",
+            }
+        return {
+            "reply": "Peak vaqtni hisoblash uchun hali yetarli analytics ma’lumot yo‘q.",
+            "source": "fallback",
+        }
 
     if "highest risk" in message or "risk camera" in message or "most risky" in message:
         if not camera_data:
