@@ -27,7 +27,7 @@ from modules.advanced_ai import (
     license_plate_recognition_placeholder,
     fight_aggression_detection_placeholder,
 )
-from utils_video import open_video_source, draw_zones
+from utils_video import is_youtube_source, open_video_source, draw_zones
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRAMES_DIR = BASE_DIR / "frames"
@@ -100,6 +100,27 @@ def open_source_with_low_latency(url):
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cap.set(cv2.CAP_PROP_FPS, 15)
     return cap
+
+
+def open_source_with_retry(url: str, local_source: bool):
+    retry_sleep = 60 if is_youtube_source(url) else 3
+    while True:
+        try:
+            cap = open_source_with_low_latency(url)
+        except Exception as exc:
+            print(f"ERROR: video stream cannot be opened, retrying in {retry_sleep}s: {exc}", flush=True)
+            time.sleep(retry_sleep)
+            continue
+
+        if cap.isOpened():
+            return cap
+
+        print(f"ERROR: video stream cannot be opened, retrying in {retry_sleep}s.", flush=True)
+        try:
+            cap.release()
+        except Exception:
+            pass
+        time.sleep(retry_sleep if not local_source else 1)
 
 
 def save_latest_frame(frame, camera_id):
@@ -213,11 +234,7 @@ def main():
     print(f"Speed mode: {args.speed_mode}")
 
     model = load_model(args.model)
-    cap = open_source_with_low_latency(args.url)
-
-    if not cap.isOpened():
-        print("ERROR: video stream cannot be opened.")
-        return
+    cap = open_source_with_retry(args.url, local_source)
 
     video_start_wall, video_start_msec = reset_local_video_clock()
 
@@ -250,8 +267,7 @@ def main():
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 video_start_wall, video_start_msec = reset_local_video_clock()
             else:
-                time.sleep(3)
-                cap = open_source_with_low_latency(args.url)
+                cap = open_source_with_retry(args.url, local_source)
 
             continue
 

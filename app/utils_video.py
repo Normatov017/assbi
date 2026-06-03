@@ -17,22 +17,36 @@ def youtube_cookie_options():
     return {}
 
 
+def is_youtube_source(source: str) -> bool:
+    return source.startswith("http") and ("youtube.com" in source or "youtu.be" in source)
+
+
 def youtube_extractor_args():
-    args = {"youtube": {"player_client": ["android", "web", "web_embedded"]}}
+    args = {"youtube": {"player_client": ["web_embedded", "web", "android", "ios"]}}
     provider_url = os.environ.get("YOUTUBE_POT_PROVIDER_URL")
     if provider_url:
         args["youtubepot-bgutilhttp"] = {"base_url": [provider_url]}
     return args
 
 
-def get_youtube_stream_url(url):
-    opts = {
-        "format": "best[ext=mp4]/best",
-        "quiet": True,
-        "no_warnings": True,
+def youtube_dlp_options(quiet: bool = True):
+    return {
+        "format": "best[height<=720][vcodec!=none]/best[ext=mp4]/best",
+        "quiet": quiet,
+        "no_warnings": quiet,
         "extractor_args": youtube_extractor_args(),
+        "extractor_retries": 2,
+        "fragment_retries": 2,
+        "retries": 2,
+        "sleep_interval_requests": 2,
+        "sleep_interval": 1,
+        "max_sleep_interval": 5,
         **youtube_cookie_options(),
     }
+
+
+def get_youtube_stream_url(url):
+    opts = youtube_dlp_options()
     with yt_dlp.YoutubeDL(opts) as ydl:
         info=ydl.extract_info(url, download=False)
         if info.get("url"): return info["url"]
@@ -41,7 +55,7 @@ def get_youtube_stream_url(url):
         return formats[-1]["url"]
 
 def open_video_source(source):
-    if source.startswith("http") and ("youtube.com" in source or "youtu.be" in source):
+    if is_youtube_source(source):
         return cv2.VideoCapture(get_youtube_stream_url(source), cv2.CAP_FFMPEG)
     if source.startswith("http"):
         return cv2.VideoCapture(source, cv2.CAP_FFMPEG)

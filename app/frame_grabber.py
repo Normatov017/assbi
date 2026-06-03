@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import yt_dlp
 
-from utils_video import youtube_cookie_options, youtube_extractor_args
+from utils_video import is_youtube_source, youtube_dlp_options
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,13 +29,7 @@ def get_stream_url(url: str) -> str:
     if "youtube.com" not in url and "youtu.be" not in url:
         return url
 
-    options = {
-        "format": "best[ext=mp4]/best",
-        "quiet": True,
-        "no_warnings": True,
-        "extractor_args": youtube_extractor_args(),
-        **youtube_cookie_options(),
-    }
+    options = youtube_dlp_options()
 
     with yt_dlp.YoutubeDL(options) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -160,8 +154,9 @@ def main() -> None:
                 save_frame(annotate(frame, args.camera_id, args.site), args.camera_id)
                 time.sleep(args.interval)
         except Exception as exc:
-            print(f"[ASSBI] frame_grabber retrying: {exc}", flush=True)
-            time.sleep(3)
+            retry_sleep = 60 if is_youtube_source(args.url) else 3
+            print(f"[ASSBI] frame_grabber retrying in {retry_sleep}s: {exc}", flush=True)
+            time.sleep(retry_sleep)
         finally:
             try:
                 cap.release()
