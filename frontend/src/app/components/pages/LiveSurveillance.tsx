@@ -160,18 +160,51 @@ function getStreamUrl(camera?: CameraType) {
 }
 
 function getYoutubeEmbedUrl(camera?: CameraType) {
-  if (!camera?.url || !String(camera.type || "").toLowerCase().includes("youtube")) {
+  if (!camera?.url) {
     return "";
   }
 
+  const type = String(camera.type || "").toLowerCase();
   const source = String(camera.url);
-  const match =
-    source.match(/[?&]v=([^&]+)/) ||
-    source.match(/youtu\.be\/([^?&]+)/) ||
-    source.match(/youtube\.com\/live\/([^?&/]+)/);
+  const isYoutubeSource =
+    type.includes("youtube") ||
+    source.includes("youtube.com") ||
+    source.includes("youtu.be");
 
-  const videoId = match?.[1];
-  return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1` : "";
+  if (!isYoutubeSource) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(source);
+    let videoId = "";
+
+    if (parsed.hostname.includes("youtu.be")) {
+      videoId = parsed.pathname.split("/").filter(Boolean)[0] || "";
+    } else if (parsed.searchParams.get("v")) {
+      videoId = parsed.searchParams.get("v") || "";
+    } else {
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      const videoPathIndex = parts.findIndex((part) =>
+        ["embed", "live", "shorts"].includes(part)
+      );
+      videoId =
+        videoPathIndex >= 0 ? parts[videoPathIndex + 1] || "" : parts[0] || "";
+    }
+
+    return videoId
+      ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1`
+      : "";
+  } catch {
+    const match =
+      source.match(/[?&]v=([^&]+)/) ||
+      source.match(/youtu\.be\/([^?&]+)/) ||
+      source.match(/youtube\.com\/(?:live|embed|shorts)\/([^?&/]+)/);
+
+    return match?.[1]
+      ? `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=1&playsinline=1`
+      : "";
+  }
 }
 
 function cameraSourceLabel(type?: string) {
@@ -754,14 +787,7 @@ export default function LiveSurveillance() {
               </div>
 
               <div className="relative rounded-2xl overflow-hidden border border-border/50 bg-black min-h-[430px] flex items-center justify-center">
-                {selectedCamera?.running && selectedStreamUrl ? (
-                  <img
-                    key={`${selectedCamera.camera_id}-stream`}
-                    src={selectedStreamUrl}
-                    alt={selectedCamera.site || selectedCamera.camera_id}
-                    className="w-full h-full object-contain max-h-[600px]"
-                  />
-                ) : selectedYoutubeEmbedUrl ? (
+                {selectedYoutubeEmbedUrl ? (
                   <iframe
                     key={`${selectedCamera?.camera_id}-youtube`}
                     src={selectedYoutubeEmbedUrl}
@@ -769,6 +795,13 @@ export default function LiveSurveillance() {
                     className="w-full min-h-[430px] h-full max-h-[600px]"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowFullScreen
+                  />
+                ) : selectedCamera?.running && selectedStreamUrl ? (
+                  <img
+                    key={`${selectedCamera.camera_id}-stream`}
+                    src={selectedStreamUrl}
+                    alt={selectedCamera.site || selectedCamera.camera_id}
+                    className="w-full h-full object-contain max-h-[600px]"
                   />
                 ) : selectedCamera && selectedFrameUrl ? (
                   <img
@@ -1332,21 +1365,21 @@ export default function LiveSurveillance() {
             </div>
 
             <div className="relative flex-1 min-h-0 bg-black flex items-center justify-center">
-              {selectedCamera.running && selectedStreamUrl ? (
-                <img
-                  key={`${selectedCamera.camera_id}-focus-stream`}
-                  src={`${selectedStreamUrl}&focus=1`}
-                  alt={selectedCamera.site || selectedCamera.camera_id}
-                  className="h-full w-full object-contain"
-                />
-              ) : selectedYoutubeEmbedUrl ? (
+              {selectedYoutubeEmbedUrl ? (
                 <iframe
                   key={`${selectedCamera.camera_id}-focus-youtube`}
                   src={selectedYoutubeEmbedUrl}
                   title={selectedCamera.site || selectedCamera.camera_id}
                   className="h-full w-full"
-                  allow="autoplay; encrypted-media; picture-in-picture"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
+                />
+              ) : selectedCamera.running && selectedStreamUrl ? (
+                <img
+                  key={`${selectedCamera.camera_id}-focus-stream`}
+                  src={`${selectedStreamUrl}&focus=1`}
+                  alt={selectedCamera.site || selectedCamera.camera_id}
+                  className="h-full w-full object-contain"
                 />
               ) : (
                 <div className="text-center">
