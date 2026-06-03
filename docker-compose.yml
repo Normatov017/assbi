@@ -12,6 +12,7 @@ services:
       - bgutil-provider
     environment:
       YOUTUBE_POT_PROVIDER_URL: http://bgutil-provider:4416
+      YTDLP_NO_LAZY_EXTRACTORS: "1"
     volumes:
       - ./data:/app/data
       - ./frames:/app/frames

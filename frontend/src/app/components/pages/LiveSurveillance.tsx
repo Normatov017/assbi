@@ -50,6 +50,8 @@ interface CameraType {
   speed_mode?: string;
   enabled?: boolean;
   running?: boolean;
+  has_frame?: boolean;
+  frame_updated_at?: string;
   frame_url?: string;
   stream_url?: string;
   active_people?: number;
@@ -512,6 +514,7 @@ export default function LiveSurveillance() {
   const selectedFrameUrl = getFrameUrl(selectedCamera);
   const selectedStreamUrl = getStreamUrl(selectedCamera);
   const selectedYoutubeEmbedUrl = getYoutubeEmbedUrl(selectedCamera);
+  const selectedHasFrame = Boolean(selectedCamera?.has_frame);
 
   const operatorInsight = useMemo(() => {
     if (error) {
@@ -787,7 +790,14 @@ export default function LiveSurveillance() {
               </div>
 
               <div className="relative rounded-2xl overflow-hidden border border-border/50 bg-black min-h-[430px] flex items-center justify-center">
-                {selectedYoutubeEmbedUrl ? (
+                {selectedCamera?.running && selectedHasFrame && selectedStreamUrl ? (
+                  <img
+                    key={`${selectedCamera.camera_id}-stream`}
+                    src={selectedStreamUrl}
+                    alt={selectedCamera.site || selectedCamera.camera_id}
+                    className="w-full h-full object-contain max-h-[600px]"
+                  />
+                ) : selectedYoutubeEmbedUrl ? (
                   <iframe
                     key={`${selectedCamera?.camera_id}-youtube`}
                     src={selectedYoutubeEmbedUrl}
@@ -795,13 +805,6 @@ export default function LiveSurveillance() {
                     className="w-full min-h-[430px] h-full max-h-[600px]"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowFullScreen
-                  />
-                ) : selectedCamera?.running && selectedStreamUrl ? (
-                  <img
-                    key={`${selectedCamera.camera_id}-stream`}
-                    src={selectedStreamUrl}
-                    alt={selectedCamera.site || selectedCamera.camera_id}
-                    className="w-full h-full object-contain max-h-[600px]"
                   />
                 ) : selectedCamera && selectedFrameUrl ? (
                   <img
@@ -1365,7 +1368,14 @@ export default function LiveSurveillance() {
             </div>
 
             <div className="relative flex-1 min-h-0 bg-black flex items-center justify-center">
-              {selectedYoutubeEmbedUrl ? (
+              {selectedCamera.running && selectedHasFrame && selectedStreamUrl ? (
+                <img
+                  key={`${selectedCamera.camera_id}-focus-stream`}
+                  src={`${selectedStreamUrl}&focus=1`}
+                  alt={selectedCamera.site || selectedCamera.camera_id}
+                  className="h-full w-full object-contain"
+                />
+              ) : selectedYoutubeEmbedUrl ? (
                 <iframe
                   key={`${selectedCamera.camera_id}-focus-youtube`}
                   src={selectedYoutubeEmbedUrl}
@@ -1373,13 +1383,6 @@ export default function LiveSurveillance() {
                   className="h-full w-full"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
-                />
-              ) : selectedCamera.running && selectedStreamUrl ? (
-                <img
-                  key={`${selectedCamera.camera_id}-focus-stream`}
-                  src={`${selectedStreamUrl}&focus=1`}
-                  alt={selectedCamera.site || selectedCamera.camera_id}
-                  className="h-full w-full object-contain"
                 />
               ) : (
                 <div className="text-center">

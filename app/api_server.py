@@ -741,6 +741,9 @@ def build_cameras_response(
         latest = latest_map.get(cam_id, {})
         process = RUNNING_PROCESSES.get(cam_id)
         running = processes_alive(process) or is_recent_camera_row(latest)
+        frame_path = FRAMES_DIR / f"{cam_id}.jpg"
+        has_frame = frame_path.exists()
+        frame_updated_at = datetime.fromtimestamp(frame_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S") if has_frame else ""
 
         result.append(
             {
@@ -764,6 +767,8 @@ def build_cameras_response(
                 "objects": safe_int(latest.get("object_count", latest.get("objects", 0))),
                 "created_at": safe_str(latest.get("timestamp", "")),
                 "timestamp": safe_str(latest.get("timestamp", "")),
+                "has_frame": has_frame,
+                "frame_updated_at": frame_updated_at,
                 "frame_url": f"/api/frame/{cam_id}",
                 "stream_url": f"/api/stream/{cam_id}",
             }

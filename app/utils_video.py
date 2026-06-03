@@ -22,7 +22,7 @@ def is_youtube_source(source: str) -> bool:
 
 
 def youtube_extractor_args():
-    args = {"youtube": {"player_client": ["web_embedded", "web", "android", "ios"]}}
+    args = {"youtube": {"player_client": ["mweb", "web_embedded", "web", "android", "ios"]}}
     provider_url = os.environ.get("YOUTUBE_POT_PROVIDER_URL")
     if provider_url:
         args["youtubepot-bgutilhttp"] = {"base_url": [provider_url]}
