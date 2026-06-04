@@ -45,3 +45,26 @@ Download and unzip the dataset, then use its `data.yaml` with:
 ```bash
 python scripts/train_yolo11m.py --data /path/to/data.yaml --epochs 80 --imgsz 640 --batch 8
 ```
+
+
+## Faster Auto-label Upload Path
+
+Instead of manually drawing every box, use the auto-labeled YOLO dataset zip:
+
+```text
+exports/kabukicho_yolo_autolabeled.zip
+```
+
+This zip already contains:
+
+- `train/images` and `train/labels` - 210 images
+- `valid/images` and `valid/labels` - 60 images
+- `test/images` and `test/labels` - 30 images
+- `data.yaml`
+
+Auto-label classes:
+
+- `0: person`
+- `1: vehicle`
+
+In Roboflow, upload this zip as an existing YOLO/Ultralytics dataset, then review and correct labels instead of labeling from zero.
