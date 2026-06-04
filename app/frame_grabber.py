@@ -125,7 +125,7 @@ def main() -> None:
     parser.add_argument("--camera-id", required=True)
     parser.add_argument("--site", default="")
     parser.add_argument("--width", type=int, default=640)
-    parser.add_argument("--height", type=int, default=360)
+    parser.add_argument("--height", type=int, default=640)
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--crop-top-ratio", type=float, default=0.0)
     args = parser.parse_args()

@@ -86,7 +86,7 @@ def parse_args():
     parser.add_argument("--no-frame-output", action="store_true")
 
     parser.add_argument("--width", type=int, default=640)
-    parser.add_argument("--height", type=int, default=360)
+    parser.add_argument("--height", type=int, default=640)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--crop-top-ratio", type=float, default=0.0)
 
@@ -295,7 +295,7 @@ def main():
         args.model = "yolov8n.pt"
         args.detect_every = max(args.detect_every, 4)
         args.width = min(args.width, 640)
-        args.height = min(args.height, 360)
+        args.height = min(args.height, 640)
         args.clean_ui = True
         args.no_trails = True
 
