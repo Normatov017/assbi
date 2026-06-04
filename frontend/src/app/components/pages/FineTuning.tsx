@@ -40,7 +40,7 @@ export default function FineTuning() {
   async function loadStatus() {
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/fine-tuning/status`, { cache: "no-store" });
+      const res = await fetch(`${API}/api/fine-tuning/status`, { cache: "no-store", credentials: "include" });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Fine-tuning status API error");
       setStatus(data);
@@ -56,6 +56,7 @@ export default function FineTuning() {
       setSavingModel(model);
       const res = await fetch(`${API}/api/fine-tuning/select`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model }),
       });
@@ -81,7 +82,7 @@ export default function FineTuning() {
       setUploading(true);
       const form = new FormData();
       form.append("model", file);
-      const res = await fetch(`${API}/api/fine-tuning/model`, { method: "POST", body: form });
+      const res = await fetch(`${API}/api/fine-tuning/model`, { method: "POST", credentials: "include", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Model yuklanmadi.");
       setMessage(`${file.name} yuklandi va aktiv model qilindi.`);

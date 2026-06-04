@@ -259,7 +259,7 @@ def required_permission_for_request(method: str, path: str) -> str:
         return "compliance"
     if path.startswith("/api/maintenance") or path.startswith("/api/cleanup"):
         return "manage_settings"
-    if path.startswith("/api/settings") or path.startswith("/api/thresholds"):
+    if path.startswith("/api/settings") or path.startswith("/api/thresholds") or path.startswith("/api/fine-tuning"):
         return "manage_settings" if method in {"POST", "PUT", "PATCH", "DELETE"} else "view"
     if path.startswith("/api/incidents") and method in {"POST", "PATCH", "DELETE"}:
         return "manage_incidents"
