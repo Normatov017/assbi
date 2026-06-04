@@ -424,7 +424,10 @@ def available_detection_models() -> list[dict[str, Any]]:
         {"id": "yolov8s.pt", "name": "YOLOv8 Small", "type": "builtin", "path": "yolov8s.pt"},
     ]
     custom = []
+    builtin_ids = {item["id"] for item in builtin}
     for path in sorted(MODELS_DIR.glob("*.pt")):
+        if path.name in builtin_ids:
+            continue
         custom.append({
             "id": path.name,
             "name": path.stem.replace("_", " "),
