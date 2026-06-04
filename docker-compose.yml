@@ -20,7 +20,7 @@ services:
       - ./reports:/app/reports
       - ./exports:/app/exports
       - ./streams:/app/streams
-      - ./models:/app/models:ro
+      - ./models:/app/models
     ports:
       - "8000:8000"
 

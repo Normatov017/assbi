@@ -135,6 +135,69 @@ def open_source_with_retry(url: str, local_source: bool):
         time.sleep(retry_sleep if not local_source else 1)
 
 
+def box_area(box):
+    x1, y1, x2, y2 = box
+    return max(0, x2 - x1) * max(0, y2 - y1)
+
+
+def box_intersection_ratio(inner, outer):
+    ix1 = max(inner[0], outer[0])
+    iy1 = max(inner[1], outer[1])
+    ix2 = min(inner[2], outer[2])
+    iy2 = min(inner[3], outer[3])
+    inter = box_area((ix1, iy1, ix2, iy2))
+    area = max(box_area(inner), 1)
+    return inter / area
+
+
+def expand_box(box, frame_w, frame_h, ratio=0.08):
+    x1, y1, x2, y2 = box
+    pad_x = int((x2 - x1) * ratio)
+    pad_y = int((y2 - y1) * ratio)
+    return (
+        max(0, x1 - pad_x),
+        max(0, y1 - pad_y),
+        min(frame_w - 1, x2 + pad_x),
+        min(frame_h - 1, y2 + pad_y),
+    )
+
+
+def filter_person_attached_objects(boxes, frame_w, frame_h):
+    person_boxes = [item["xyxy"] for item in boxes if item["cls_id"] == PERSON_CLASS_ID]
+    if not person_boxes:
+        return boxes
+
+    filtered = []
+    for item in boxes:
+        cls_id = item["cls_id"]
+        if cls_id not in OBJECT_CLASS_IDS:
+            filtered.append(item)
+            continue
+
+        obj_box = item["xyxy"]
+        conf = float(item.get("confidence", 0))
+        obj_area = box_area(obj_box)
+        attached_to_person = False
+
+        for person_box in person_boxes:
+            expanded_person = expand_box(person_box, frame_w, frame_h)
+            person_area = max(box_area(person_box), 1)
+            overlap = box_intersection_ratio(obj_box, expanded_person)
+            area_ratio = obj_area / person_area
+            if overlap >= 0.55 or (overlap >= 0.25 and area_ratio <= 0.35):
+                attached_to_person = True
+                break
+
+        if attached_to_person and cls_id in {24, 26, 28}:
+            continue
+        if attached_to_person and cls_id in {63, 67} and conf < 0.55:
+            continue
+
+        filtered.append(item)
+
+    return filtered
+
+
 def save_latest_frame(frame, camera_id):
     final_path = FRAMES_DIR / f"{camera_id}.jpg"
     temp_path = FRAMES_DIR / f"{camera_id}_{os.getpid()}_tmp.jpg"
@@ -357,6 +420,7 @@ def main():
                         "track_id": track_id,
                     })
 
+            latest_boxes = filter_person_attached_objects(latest_boxes, w, h)
             save_latest_boxes(latest_boxes, args.camera_id)
 
         active_tracks = {

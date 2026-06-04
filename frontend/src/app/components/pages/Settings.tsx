@@ -149,15 +149,17 @@ function validateCameraForm({
   site,
   url,
   type,
+  hasVideoFile = false,
 }: {
   cameraId: string;
   site: string;
   url: string;
   type: CameraType;
+  hasVideoFile?: boolean;
 }) {
   if (!cameraId.trim()) return "Camera ID kiritilishi kerak.";
   if (!site.trim()) return "Site name kiritilishi kerak.";
-  if (!url.trim()) return "Camera URL yoki local path kiritilishi kerak.";
+  if (!url.trim() && !(type === "local" && hasVideoFile)) return "Camera URL, local path yoki video file kiritilishi kerak.";
 
   const normalizedId = normalizeCameraId(cameraId);
 
@@ -173,8 +175,8 @@ function validateCameraForm({
     return "RTSP kamera uchun link rtsp:// bilan boshlanishi kerak.";
   }
 
-  if (type === "local" && !/\.(mp4|mov|avi|mkv|webm)$/i.test(url.trim())) {
-    return "Local video uchun .mp4, .mov, .avi, .mkv yoki .webm fayl path kiriting.";
+  if (type === "local" && !hasVideoFile && !/\.(mp4|mov|avi|mkv|webm)$/i.test(url.trim())) {
+    return "Local video uchun .mp4, .mov, .avi, .mkv yoki .webm fayl path kiriting yoki video file yuklang.";
   }
 
   return "";
@@ -185,6 +187,7 @@ export default function Settings() {
   const [cameraId, setCameraId] = useState("");
   const [site, setSite] = useState("");
   const [url, setUrl] = useState("");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [type, setType] = useState<CameraType>("youtube");
   const [speedMode, setSpeedMode] = useState<SpeedMode>("normal");
   const [settings, setSettings] = useState<SettingsState>(DEFAULT_SETTINGS);
@@ -265,6 +268,7 @@ export default function Settings() {
       site,
       url,
       type,
+      hasVideoFile: Boolean(videoFile),
     });
 
     if (validationMessage) {
@@ -280,22 +284,38 @@ export default function Settings() {
     try {
       setSavingCamera(true);
 
-      const payload = {
-        camera_id: cameraId.trim(),
-        site: site.trim(),
-        url: url.trim(),
-        type,
-        speed_mode: speedMode,
-        enabled: true,
-      };
+      let response: Response;
 
-      const response = await fetch(`${API}/api/cameras`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      if (type === "local" && videoFile) {
+        const form = new FormData();
+        form.append("video", videoFile);
+        form.append("camera_id", cameraId.trim());
+        form.append("site", site.trim());
+        form.append("speed_mode", speedMode);
+        form.append("enabled", "true");
+
+        response = await fetch(`${API}/api/cameras/upload-video`, {
+          method: "POST",
+          body: form,
+        });
+      } else {
+        const payload = {
+          camera_id: cameraId.trim(),
+          site: site.trim(),
+          url: url.trim(),
+          type,
+          speed_mode: speedMode,
+          enabled: true,
+        };
+
+        response = await fetch(`${API}/api/cameras`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+      }
 
       let data: any = {};
 
@@ -313,6 +333,7 @@ export default function Settings() {
       setCameraId("");
       setSite("");
       setUrl("");
+      setVideoFile(null);
       setType("youtube");
       setSpeedMode("normal");
 
@@ -430,9 +451,9 @@ export default function Settings() {
       id: cameraId.trim() || "camera_id_not_set",
       type,
       speedMode,
-      url: url.trim() || getCameraPlaceholder(type),
+      url: videoFile ? videoFile.name : url.trim() || getCameraPlaceholder(type),
     };
-  }, [cameraId, site, type, speedMode, url]);
+  }, [cameraId, site, type, speedMode, url, videoFile]);
 
   return (
     <div className="space-y-6">
@@ -582,7 +603,10 @@ export default function Settings() {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label>Camera Type</Label>
-                    <Select value={type} onValueChange={(value) => setType(value as CameraType)}>
+                    <Select value={type} onValueChange={(value) => {
+                      setType(value as CameraType);
+                      if (value !== "local") setVideoFile(null);
+                    }}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -651,6 +675,34 @@ export default function Settings() {
                       />
                     </div>
                   </div>
+
+
+                  {type === "local" && (
+                    <div className="space-y-2 xl:col-span-12">
+                      <Label>MP4 video upload</Label>
+                      <Input
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.mp4,.mov,.avi,.mkv,.webm"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] || null;
+                          setVideoFile(file);
+                          if (file) {
+                            const fileSite = file.name.replace(/\.[^.]+$/, "");
+                            const nextSite = site.trim() || fileSite;
+                            if (!site.trim()) setSite(fileSite);
+                            if (!cameraId.trim()) {
+                              setCameraId(makeCameraId("local", nextSite, cameras));
+                            }
+                          }
+                        }}
+                      />
+                      {videoFile && (
+                        <p className="text-xs text-muted-foreground">
+                          Tanlangan file: {videoFile.name} · {(videoFile.size / (1024 * 1024)).toFixed(1)} MB
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-2xl border border-border/50 bg-muted/20 p-4">

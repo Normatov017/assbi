@@ -2,10 +2,12 @@ import argparse
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -50,6 +52,19 @@ class ManagedCamera:
 
 
 
+def rtsp_reachable(url: str, timeout: float = 1.5) -> bool:
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or 554
+        if not host:
+            return False
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def selected_model_path():
     try:
         settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
@@ -72,10 +87,12 @@ def source_supported(camera):
 
     if "youtube" in cam_type or "youtube.com" in url or "youtu.be" in url:
         return True
-    if url.startswith(("http://", "https://", "rtsp://", "tcp://")):
+    if url.startswith("rtsp://"):
+        return rtsp_reachable(url)
+    if url.startswith(("http://", "https://", "tcp://")):
         return True
     if url.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm")):
-        return True
+        return Path(url).exists()
 
     return False
 

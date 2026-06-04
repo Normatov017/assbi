@@ -39,6 +39,7 @@ except ModuleNotFoundError:
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRAMES_DIR = BASE_DIR / "frames"
 STREAMS_DIR = BASE_DIR / "streams"
+UPLOADS_DIR = STREAMS_DIR / "uploads"
 EXPORTS_DIR = BASE_DIR / "exports"
 LOGS_DIR = BASE_DIR / "logs"
 CAMERAS_FILE = STREAMS_DIR / "cameras.json"
@@ -48,6 +49,7 @@ TRAINING_DIR = BASE_DIR / "training"
 
 FRAMES_DIR.mkdir(exist_ok=True)
 STREAMS_DIR.mkdir(exist_ok=True)
+UPLOADS_DIR.mkdir(exist_ok=True)
 EXPORTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 MODELS_DIR.mkdir(exist_ok=True)
@@ -1435,6 +1437,64 @@ def add_camera(payload: CameraPayload, request: Request):
         "message": "Camera saved and detector start attempted",
         "cameras": cameras_data,
     }
+
+
+@app.post("/api/cameras/upload-video")
+async def upload_video_camera(
+    request: Request,
+    video: UploadFile = File(...),
+    camera_id: str = Form(""),
+    site: str = Form("Uploaded Video"),
+    speed_mode: str = Form("normal"),
+    enabled: bool = Form(True),
+):
+    original_name = Path(video.filename or "uploaded_video.mp4").name.replace(" ", "_")
+    suffix = Path(original_name).suffix.lower()
+    if suffix not in {".mp4", ".mov", ".avi", ".mkv", ".webm"}:
+        return JSONResponse({"ok": False, "message": "Only .mp4, .mov, .avi, .mkv or .webm video files are supported."}, status_code=400)
+
+    cameras_data = load_cameras()
+    raw_id = camera_id.strip() or f"local_{Path(original_name).stem}"
+    cam_id = normalize_camera_id(raw_id)
+    if not cam_id:
+        cam_id = f"local_video_{int(time.time())}"
+
+    existing_ids = {safe_str(cam.get("camera_id")) for cam in cameras_data}
+    base_id = cam_id
+    counter = 1
+    while cam_id in existing_ids:
+        cam_id = f"{base_id}_{counter}"
+        counter += 1
+
+    stored_name = f"{cam_id}{suffix}"
+    target = UPLOADS_DIR / stored_name
+    with target.open("wb") as handle:
+        while True:
+            chunk = await video.read(1024 * 1024)
+            if not chunk:
+                break
+            handle.write(chunk)
+
+    clean_speed = speed_mode if speed_mode in {"slow", "normal", "fast"} else "normal"
+    clean_site = site.strip() or cam_id
+    new_camera = {
+        "camera_id": cam_id,
+        "site": clean_site,
+        "url": str(target),
+        "type": "local",
+        "speed_mode": clean_speed,
+        "enabled": bool(enabled),
+    }
+
+    cameras_data.append(new_camera)
+    save_cameras(cameras_data)
+
+    started = False
+    if new_camera["enabled"]:
+        started = start_detector(cam_id, clean_site, str(target), clean_speed)
+
+    audit_event(request, "camera.upload_video", f"camera_id={cam_id}; file={stored_name}; started={started}")
+    return {"ok": True, "camera": new_camera, "camera_id": cam_id, "started": started, "cameras": cameras_data}
 
 
 @app.post("/api/cameras/{camera_id}/start")
