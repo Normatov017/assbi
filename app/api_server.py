@@ -43,11 +43,15 @@ EXPORTS_DIR = BASE_DIR / "exports"
 LOGS_DIR = BASE_DIR / "logs"
 CAMERAS_FILE = STREAMS_DIR / "cameras.json"
 SETTINGS_FILE = STREAMS_DIR / "settings.json"
+MODELS_DIR = BASE_DIR / "models"
+TRAINING_DIR = BASE_DIR / "training"
 
 FRAMES_DIR.mkdir(exist_ok=True)
 STREAMS_DIR.mkdir(exist_ok=True)
 EXPORTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
+MODELS_DIR.mkdir(exist_ok=True)
+TRAINING_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="ASSBI Ultra API", version="3.0.0")
 
@@ -103,6 +107,10 @@ class IncidentWorkflowPayload(BaseModel):
     status: Optional[str] = None
     assigned_to: Optional[str] = None
     operator_note: Optional[str] = None
+
+
+class ModelSelectionPayload(BaseModel):
+    model: str
 
 
 DEFAULT_USERS = {
@@ -408,6 +416,34 @@ def save_settings(payload: dict[str, Any]) -> dict[str, Any]:
             pass
 
     return current
+
+
+def available_detection_models() -> list[dict[str, Any]]:
+    builtin = [
+        {"id": "yolov8n.pt", "name": "YOLOv8 Nano", "type": "builtin", "path": "yolov8n.pt"},
+        {"id": "yolov8s.pt", "name": "YOLOv8 Small", "type": "builtin", "path": "yolov8s.pt"},
+    ]
+    custom = []
+    for path in sorted(MODELS_DIR.glob("*.pt")):
+        custom.append({
+            "id": path.name,
+            "name": path.stem.replace("_", " "),
+            "type": "custom",
+            "path": str(path),
+            "size_mb": round(path.stat().st_size / (1024 * 1024), 2),
+            "updated_at": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        })
+    return builtin + custom
+
+
+def resolve_detection_model(model_id: str) -> str:
+    clean = Path(str(model_id or "yolov8n.pt")).name
+    custom_path = MODELS_DIR / clean
+    if custom_path.exists():
+        return str(custom_path)
+    if clean in {"yolov8n.pt", "yolov8s.pt"}:
+        return clean
+    return "yolov8n.pt"
 
 
 def latest_by_camera(df: pd.DataFrame) -> pd.DataFrame:
@@ -1588,6 +1624,7 @@ def stream_camera(camera_id: str):
     return StreamingResponse(
         mjpeg_generator(camera_id),
         media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -1605,6 +1642,50 @@ def export_snapshot(camera_id: str):
     snapshot_path.write_bytes(frame_path.read_bytes())
 
     return FileResponse(snapshot_path, filename=filename, media_type="image/jpeg")
+
+
+@app.get("/api/fine-tuning/status")
+def fine_tuning_status():
+    settings = load_settings()
+    current = str(settings.get("detection_model", "yolov8n.pt"))
+    return {
+        "ok": True,
+        "current_model": current,
+        "resolved_model": resolve_detection_model(current),
+        "models": available_detection_models(),
+        "training_dir": str(TRAINING_DIR),
+    }
+
+
+@app.post("/api/fine-tuning/model")
+async def upload_fine_tuned_model(request: Request, model: UploadFile = File(...)):
+    filename = Path(model.filename or "custom_model.pt").name.replace(" ", "_")
+    if not filename.endswith(".pt"):
+        return JSONResponse({"ok": False, "message": "Only .pt YOLO model files are supported."}, status_code=400)
+
+    target = MODELS_DIR / filename
+    with target.open("wb") as handle:
+        while True:
+            chunk = await model.read(1024 * 1024)
+            if not chunk:
+                break
+            handle.write(chunk)
+
+    saved = save_settings({"detection_model": filename})
+    audit_event(request, "fine_tuning.model_upload", filename)
+    return {"ok": True, "model": filename, "settings": saved, "models": available_detection_models()}
+
+
+@app.post("/api/fine-tuning/select")
+def select_fine_tuned_model(payload: ModelSelectionPayload, request: Request):
+    model_id = Path(payload.model).name
+    available_ids = {item["id"] for item in available_detection_models()}
+    if model_id not in available_ids:
+        return JSONResponse({"ok": False, "message": "Model not found."}, status_code=404)
+
+    saved = save_settings({"detection_model": model_id})
+    audit_event(request, "fine_tuning.model_select", model_id)
+    return {"ok": True, "current_model": model_id, "resolved_model": resolve_detection_model(model_id), "settings": saved}
 
 
 @app.get("/api/thresholds")

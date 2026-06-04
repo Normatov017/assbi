@@ -97,7 +97,7 @@ def main():
                     endpoint,
                     data=payload,
                     files={"frame": ("frame.jpg", handle, "image/jpeg")},
-                    timeout=10,
+                    timeout=3,
                 )
             response.raise_for_status()
             print(f"[ASSBI relay] uploaded {args.camera_id} {timestamp}", flush=True)

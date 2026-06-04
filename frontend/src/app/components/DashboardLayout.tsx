@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Bell,
   Bot,
+  BrainCircuit,
   Camera,
   CheckCircle2,
   ChevronLeft,
@@ -89,6 +90,13 @@ const navigation: NavItem[] = [
     labelKey: "nav.objects",
     path: "/objects",
     icon: ScanSearch,
+    group: "intelligence",
+  },
+  {
+    name: "Fine-tuning",
+    labelKey: "nav.fineTuning",
+    path: "/fine-tuning",
+    icon: BrainCircuit,
     group: "intelligence",
   },
   {

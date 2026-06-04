@@ -118,6 +118,7 @@ const dictionary: Dictionary = {
   "nav.live": { uz: "Live kuzatuv", ru: "Live наблюдение", en: "Live Surveillance" },
   "nav.crowd": { uz: "Odamlar analitikasi", ru: "Аналитика толпы", en: "Crowd Analytics" },
   "nav.objects": { uz: "Object detection", ru: "Детекция объектов", en: "Object Detection" },
+  "nav.fineTuning": { uz: "Fine-tuning", ru: "Fine-tuning", en: "Fine-tuning" },
   "nav.anomalies": { uz: "Anomaliya detection", ru: "Детекция аномалий", en: "Anomaly Detection" },
   "nav.predictive": { uz: "Prognoz analitika", ru: "Прогнозная аналитика", en: "Predictive Analytics" },
   "nav.reports": { uz: "Hisobotlar", ru: "Отчеты", en: "Reports" },

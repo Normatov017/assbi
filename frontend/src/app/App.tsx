@@ -10,6 +10,7 @@ import DashboardOverview from "./components/pages/DashboardOverview";
 import LiveSurveillance from "./components/pages/LiveSurveillance";
 import CrowdAnalytics from "./components/pages/CrowdAnalytics";
 import ObjectDetection from "./components/pages/ObjectDetection";
+import FineTuning from "./components/pages/FineTuning";
 import AnomalyDetection from "./components/pages/AnomalyDetection";
 import PredictiveAnalytics from "./components/pages/PredictiveAnalytics";
 import Reports from "./components/pages/Reports";
@@ -124,6 +125,11 @@ export default function App() {
             <Route
               path="objects"
               element={<ObjectDetection />}
+            />
+
+            <Route
+              path="fine-tuning"
+              element={<FineTuning />}
             />
 
             <Route

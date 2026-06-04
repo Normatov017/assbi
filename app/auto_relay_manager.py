@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import signal
 import subprocess
@@ -12,6 +13,8 @@ import requests
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRAMES_DIR = BASE_DIR / "frames"
 LOGS_DIR = BASE_DIR / "logs"
+SETTINGS_FILE = BASE_DIR / "streams" / "settings.json"
+MODELS_DIR = BASE_DIR / "models"
 
 FRAMES_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
@@ -43,6 +46,22 @@ class ManagedCamera:
                 handle.close()
             except Exception:
                 pass
+
+
+
+
+def selected_model_path():
+    try:
+        settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        model_name = Path(str(settings.get("detection_model", "yolov8n.pt"))).name
+        custom_model = MODELS_DIR / model_name
+        if custom_model.exists():
+            return str(custom_model)
+        if model_name in {"yolov8n.pt", "yolov8s.pt"}:
+            return model_name
+    except Exception:
+        pass
+    return "yolov8n.pt"
 
 
 def source_supported(camera):
@@ -89,6 +108,12 @@ def start_camera(camera, api_url, env):
     site = str(camera.get("site") or camera_id).strip() or camera_id
     url = str(camera.get("url") or "").strip()
     cam_type = str(camera.get("type") or "relay").strip() or "relay"
+    is_rtsp = url.lower().startswith("rtsp://")
+    grabber_interval = "0.05" if is_rtsp else "0.08"
+    grabber_width = "960" if is_rtsp else "640"
+    grabber_height = "540" if is_rtsp else "360"
+    relay_interval = "0.08" if is_rtsp else "0.12"
+    detect_every = "8" if is_rtsp else "12"
 
     cleanup_stale_files(camera_id)
 
@@ -109,7 +134,7 @@ def start_camera(camera, api_url, env):
         "--speed-mode",
         str(camera.get("speed_mode") or "normal"),
         "--model",
-        "yolov8n.pt",
+        selected_model_path(),
         "--conf",
         "0.05",
         "--width",
@@ -119,7 +144,7 @@ def start_camera(camera, api_url, env):
         "--imgsz",
         "640",
         "--detect-every",
-        "12",
+        detect_every,
         "--log-every",
         "1",
         "--max-lost-seconds",
@@ -136,13 +161,13 @@ def start_camera(camera, api_url, env):
         "--site",
         site,
         "--width",
-        "960",
+        grabber_width,
         "--height",
-        "540",
+        grabber_height,
         "--interval",
-        "0.18",
+        grabber_interval,
     ]
-    if url.lower().startswith("rtsp://"):
+    if is_rtsp:
         grabber_cmd.extend(["--crop-top-ratio", "0.20"])
 
     relay_cmd = [
@@ -159,7 +184,7 @@ def start_camera(camera, api_url, env):
         "--camera-type",
         cam_type,
         "--interval",
-        "0.25",
+        relay_interval,
     ]
 
     procs = [

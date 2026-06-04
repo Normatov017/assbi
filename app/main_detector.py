@@ -37,6 +37,18 @@ DETECT_CLASSES = [0, 2, 3, 5, 7, 24, 26, 28, 63, 67]
 
 
 def default_model_path():
+    settings_path = BASE_DIR / "streams" / "settings.json"
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        model_name = Path(str(settings.get("detection_model", "yolov8n.pt"))).name
+        custom_model = BASE_DIR / "models" / model_name
+        if custom_model.exists():
+            return str(custom_model)
+        if model_name in {"yolov8n.pt", "yolov8s.pt"}:
+            return model_name
+    except Exception:
+        pass
+
     deployed_model = BASE_DIR / "models" / "yolov8n.pt"
     if deployed_model.exists():
         return str(deployed_model)
