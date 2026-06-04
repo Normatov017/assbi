@@ -134,10 +134,10 @@ class ModelSelectionPayload(BaseModel):
 
 class TrainingStartPayload(BaseModel):
     data: str = "datasets/custom_assbi_yolo/data.yaml"
-    model: str = "yolo11m.pt"
-    epochs: int = 80
+    model: str = "yolov8n.pt"
+    epochs: int = 10
     imgsz: int = 640
-    batch: int = 8
+    batch: int = 1
     name: str = "assbi_custom_person_vehicle_object"
 
 
@@ -2275,7 +2275,7 @@ def start_fine_tuning_training(payload: TrainingStartPayload, request: Request):
     imgsz = max(320, min(int(payload.imgsz), 1280))
     batch = max(1, min(int(payload.batch), 64))
     run_name = normalize_camera_id(payload.name or "assbi_custom_train")
-    model_name = Path(payload.model or "yolo11m.pt").name
+    model_name = Path(payload.model or "yolov8n.pt").name
 
     cmd = [
         sys.executable,

@@ -95,9 +95,9 @@ export default function FineTuning() {
   const [collectionSource, setCollectionSource] = useState("");
   const [collectionCount, setCollectionCount] = useState(500);
   const [collectionInterval, setCollectionInterval] = useState(1);
-  const [trainModel, setTrainModel] = useState("yolo11m.pt");
-  const [trainEpochs, setTrainEpochs] = useState(80);
-  const [trainBatch, setTrainBatch] = useState(8);
+  const [trainModel, setTrainModel] = useState("yolov8n.pt");
+  const [trainEpochs, setTrainEpochs] = useState(10);
+  const [trainBatch, setTrainBatch] = useState(1);
   const [trainImgSize, setTrainImgSize] = useState(640);
   const [trainName, setTrainName] = useState("assbi_custom_person_vehicle_object");
   const [message, setMessage] = useState("");
@@ -488,10 +488,12 @@ export default function FineTuning() {
 
 
 
+          <p className="text-xs text-muted-foreground">AWS CPU uchun tavsiya: yolov8n.pt, epochs 10, batch 1, image size 640. yolo11m.pt kuchliroq server/GPU talab qiladi.</p>
+
           <div className="grid gap-3 md:grid-cols-5">
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">Base model</p>
-              <Input value={trainModel} onChange={(event) => setTrainModel(event.target.value)} placeholder="yolo11m.pt" />
+              <Input value={trainModel} onChange={(event) => setTrainModel(event.target.value)} placeholder="yolov8n.pt" />
             </div>
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">Epochs</p>
