@@ -240,6 +240,11 @@ def main():
     allowed_types = {item.strip().lower() for item in allowed_types_raw.split(",") if item.strip()}
     allowed_ids_raw = os.getenv("ASSBI_RELAY_CAMERA_IDS", "").strip()
     allowed_ids = {item.strip() for item in allowed_ids_raw.split(",") if item.strip()}
+    allow_all_youtube = os.getenv("ASSBI_RELAY_ALL_YOUTUBE", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
 
     managed = {}
     stopping = False
@@ -260,9 +265,15 @@ def main():
             for camera in cameras:
                 camera_id = str(camera.get("camera_id") or "").strip()
                 camera_type = str(camera.get("type") or "").lower()
+                camera_url = str(camera.get("url") or "").lower()
+                is_youtube = (
+                    "youtube" in camera_type
+                    or "youtube.com" in camera_url
+                    or "youtu.be" in camera_url
+                )
                 if allowed_types and camera_type not in allowed_types:
                     continue
-                if allowed_ids and camera_id not in allowed_ids:
+                if allowed_ids and camera_id not in allowed_ids and not (allow_all_youtube and is_youtube):
                     continue
                 if not camera_id or camera.get("enabled") is False or not source_supported(camera):
                     continue

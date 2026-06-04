@@ -120,12 +120,7 @@ function qualityBadge(value: number) {
 }
 
 function hasLiveFrame(camera?: CameraType) {
-  return Boolean(
-    camera?.running &&
-      (camera.has_frame ||
-        numberValue(camera.fps) > 0 ||
-        numberValue(camera.quality) > 0)
-  );
+  return Boolean(camera?.running && camera.has_frame);
 }
 
 function statusBadge(running?: boolean, healthy?: boolean) {
