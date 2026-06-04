@@ -19,11 +19,11 @@ import cv2
 import requests
 
 try:
-    from app.utils_video import get_youtube_stream_url, is_youtube_source
+    from app.utils_video import get_youtube_stream_url, is_youtube_source, youtube_retry_sleep
 except ModuleNotFoundError:
     import sys
     sys.path.append(str(Path(__file__).resolve().parents[1] / "app"))
-    from utils_video import get_youtube_stream_url, is_youtube_source
+    from utils_video import get_youtube_stream_url, is_youtube_source, youtube_retry_sleep
 
 
 VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".mkv", ".webm")
@@ -43,6 +43,25 @@ def open_capture(source: str):
     if is_youtube_source(source):
         source = get_youtube_stream_url(source)
     return cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+
+
+def open_capture_with_retry(source: str):
+    while True:
+        try:
+            cap = open_capture(source)
+            if cap.isOpened():
+                return cap
+            try:
+                cap.release()
+            except Exception:
+                pass
+            retry_sleep = 60 if is_youtube_source(source) else 2
+            print(f"source ochilmadi, {retry_sleep}s dan keyin qayta urinadi", flush=True)
+            time.sleep(retry_sleep)
+        except Exception as exc:
+            retry_sleep = youtube_retry_sleep(exc) if is_youtube_source(source) else 2
+            print(f"source ochilmadi, {retry_sleep}s kutadi: {exc}", flush=True)
+            time.sleep(retry_sleep)
 
 
 def fetch_snapshot(source: str, timeout: float = 8.0):
@@ -106,9 +125,7 @@ def main():
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
     snapshot_mode = is_snapshot_source(args.source)
-    cap = None if snapshot_mode else open_capture(args.source)
-    if cap is not None and not cap.isOpened():
-        raise RuntimeError(f"Could not open source: {args.source}")
+    cap = None if snapshot_mode else open_capture_with_retry(args.source)
 
     saved = 0
     attempts = 0
@@ -129,8 +146,7 @@ def main():
                 if not ok or frame is None:
                     if cap is not None:
                         cap.release()
-                    time.sleep(2)
-                    cap = open_capture(args.source)
+                    cap = open_capture_with_retry(args.source)
                     continue
 
             digest = frame_hash(frame)
