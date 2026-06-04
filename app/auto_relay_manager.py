@@ -129,7 +129,7 @@ def start_camera(camera, api_url, env):
     grabber_interval = "0.08"
     grabber_width = "640"
     grabber_height = "360"
-    relay_interval = "0.12" if is_rtsp else "0.12"
+    relay_interval = "0.25" if is_rtsp else "0.5"
     detect_every = "6" if is_rtsp else "12"
     detector_imgsz = "512" if is_rtsp else "640"
 
