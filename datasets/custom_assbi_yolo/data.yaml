@@ -1,0 +1,15 @@
+# ASSBI custom YOLO dataset config
+# Recommended classes for the current project:
+# 0 person  - odamlar
+# 1 vehicle - car/bus/truck/motorbike kabi transportlar
+# 2 object  - umumiy xavfli/noaniq obyektlar
+
+path: datasets/custom_assbi_yolo
+train: train/images
+val: valid/images
+test: test/images
+
+names:
+  0: person
+  1: vehicle
+  2: object
