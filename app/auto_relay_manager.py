@@ -126,12 +126,13 @@ def start_camera(camera, api_url, env):
     url = str(camera.get("url") or "").strip()
     cam_type = str(camera.get("type") or "relay").strip() or "relay"
     is_rtsp = url.lower().startswith("rtsp://")
-    grabber_interval = "0.08"
+    speed_mode = str(camera.get("speed_mode") or "normal").lower()
+    grabber_interval = "0.06" if speed_mode == "fast" else "0.08"
     grabber_width = "640"
     grabber_height = "360"
-    relay_interval = "0.25" if is_rtsp else "0.5"
-    detect_every = "6" if is_rtsp else "12"
-    detector_imgsz = "512" if is_rtsp else "640"
+    relay_interval = "0.20" if speed_mode == "fast" else ("0.25" if is_rtsp else "0.5")
+    detect_every = "4" if speed_mode == "fast" else ("6" if is_rtsp else "8")
+    detector_imgsz = "640"
 
     cleanup_stale_files(camera_id)
 
@@ -150,7 +151,7 @@ def start_camera(camera, api_url, env):
         site,
         "--clean-ui",
         "--speed-mode",
-        str(camera.get("speed_mode") or "normal"),
+        speed_mode if speed_mode in {"slow", "normal", "fast"} else "normal",
         "--model",
         selected_model_path(),
         "--conf",
@@ -185,8 +186,10 @@ def start_camera(camera, api_url, env):
         "--interval",
         grabber_interval,
     ]
+    if is_rtsp or speed_mode == "fast":
+        detector_cmd.extend(["--fast-mode"])
     if is_rtsp:
-        detector_cmd.extend(["--fast-mode", "--crop-top-ratio", "0.20"])
+        detector_cmd.extend(["--crop-top-ratio", "0.20"])
     else:
         grabber_cmd.extend([])
 

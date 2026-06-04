@@ -314,6 +314,10 @@ def main():
     print(f"Speed mode: {args.speed_mode}")
 
     model = load_model(args.model)
+    try:
+        model.fuse()
+    except Exception:
+        pass
     cap = open_source_with_retry(args.url, local_source)
 
     video_start_wall, video_start_msec = reset_local_video_clock()
@@ -335,6 +339,10 @@ def main():
     print("ASSBI Ultra detector started. Press q to stop.")
 
     while True:
+        if not local_source:
+            for _ in range(3 if args.fast_mode else 1):
+                cap.grab()
+
         ret, frame = cap.read()
 
         if not ret:
@@ -358,10 +366,6 @@ def main():
                 video_start_msec,
                 args.speed_mode,
             )
-
-        if not local_source:
-            for _ in range(3 if args.fast_mode else 2):
-                cap.grab()
 
         if args.crop_top_ratio > 0:
             crop_pixels = int(frame.shape[0] * min(max(args.crop_top_ratio, 0.0), 0.4))
