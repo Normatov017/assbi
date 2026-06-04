@@ -68,6 +68,7 @@ interface CameraType {
 }
 
 type FilterMode = "all" | "online" | "offline" | "high-risk" | "low-quality";
+type StreamMode = "original" | "detection";
 type SortMode = "risk" | "people" | "fps" | "quality" | "name";
 
 type CameraEvent = {
@@ -346,6 +347,7 @@ export default function LiveSurveillance() {
   const [search, setSearch] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [sortMode, setSortMode] = useState<SortMode>("risk");
+  const [streamMode, setStreamMode] = useState<StreamMode>("original");
   const selectedCameraButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const loadCameras = useCallback(async (silent = false) => {
@@ -515,6 +517,9 @@ export default function LiveSurveillance() {
   const selectedStreamUrl = getStreamUrl(selectedCamera);
   const selectedYoutubeEmbedUrl = getYoutubeEmbedUrl(selectedCamera);
   const selectedHasFrame = Boolean(selectedCamera?.has_frame);
+  const canShowOriginalStream = Boolean(selectedYoutubeEmbedUrl);
+  const canShowDetectionStream = Boolean(selectedCamera?.running && selectedHasFrame && selectedStreamUrl);
+  const useDetectionStream = canShowDetectionStream && (!canShowOriginalStream || streamMode === "detection");
 
   const operatorInsight = useMemo(() => {
     if (error) {
@@ -762,14 +767,41 @@ export default function LiveSurveillance() {
                   </div>
                 </div>
 
-                <Button
-                  variant="outline"
-                  disabled={!selectedCamera}
-                  onClick={() => setFocusOpen(true)}
-                >
-                  <Maximize2 className="size-4 mr-2" />
-                  {t("live.focusView")}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedCamera && (
+                    <div className="flex rounded-lg border border-border/60 bg-muted/40 p-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={streamMode === "original" ? "default" : "ghost"}
+                        disabled={!canShowOriginalStream}
+                        onClick={() => setStreamMode("original")}
+                        className="h-8 px-3"
+                      >
+                        Original
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={streamMode === "detection" ? "default" : "ghost"}
+                        disabled={!canShowDetectionStream}
+                        onClick={() => setStreamMode("detection")}
+                        className="h-8 px-3"
+                      >
+                        Detection
+                      </Button>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    disabled={!selectedCamera}
+                    onClick={() => setFocusOpen(true)}
+                  >
+                    <Maximize2 className="size-4 mr-2" />
+                    {t("live.focusView")}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
 
@@ -790,9 +822,9 @@ export default function LiveSurveillance() {
               </div>
 
               <div className="relative rounded-2xl overflow-hidden border border-border/50 bg-black min-h-[430px] flex items-center justify-center">
-                {selectedCamera?.running && selectedHasFrame && selectedStreamUrl ? (
+                {useDetectionStream ? (
                   <img
-                    key={`${selectedCamera.camera_id}-stream`}
+                    key={`${selectedCamera?.camera_id}-stream`}
                     src={selectedStreamUrl}
                     alt={selectedCamera.site || selectedCamera.camera_id}
                     className="w-full h-full object-contain max-h-[600px]"
@@ -829,7 +861,7 @@ export default function LiveSurveillance() {
                   <>
                     <div className="absolute left-4 top-4 flex flex-col gap-2">
                       <Badge className="bg-red-500 text-white">
-                        {t("live.liveStream").toUpperCase()}
+                        {(useDetectionStream ? "Detection" : t("live.liveStream")).toUpperCase()}
                       </Badge>
 
                       <Badge className="bg-black/70 text-white">
@@ -1368,7 +1400,7 @@ export default function LiveSurveillance() {
             </div>
 
             <div className="relative flex-1 min-h-0 bg-black flex items-center justify-center">
-              {selectedCamera.running && selectedHasFrame && selectedStreamUrl ? (
+              {useDetectionStream ? (
                 <img
                   key={`${selectedCamera.camera_id}-focus-stream`}
                   src={`${selectedStreamUrl}&focus=1`}
