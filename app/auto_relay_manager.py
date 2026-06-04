@@ -232,6 +232,9 @@ def main():
     env.setdefault("MPLCONFIGDIR", "/private/tmp/matplotlib")
     env.setdefault("YOUTUBE_COOKIES_FILE", str(BASE_DIR / "streams" / "youtube_cookies.txt"))
 
+    allowed_types_raw = os.getenv("ASSBI_RELAY_TYPES", "").strip()
+    allowed_types = {item.strip().lower() for item in allowed_types_raw.split(",") if item.strip()}
+
     managed = {}
     stopping = False
 
@@ -250,6 +253,9 @@ def main():
             wanted = {}
             for camera in cameras:
                 camera_id = str(camera.get("camera_id") or "").strip()
+                camera_type = str(camera.get("type") or "").lower()
+                if allowed_types and camera_type not in allowed_types:
+                    continue
                 if not camera_id or camera.get("enabled") is False or not source_supported(camera):
                     continue
                 wanted[camera_id] = camera
