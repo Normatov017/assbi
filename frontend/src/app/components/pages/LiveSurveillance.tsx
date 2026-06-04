@@ -416,7 +416,7 @@ export default function LiveSurveillance() {
 
     const timer = window.setInterval(() => {
       loadCameras(true);
-    }, 2000);
+    }, 1000);
 
     return () => window.clearInterval(timer);
   }, [isMonitoring, loadCameras]);

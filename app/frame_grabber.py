@@ -47,10 +47,10 @@ def get_stream_url(url: str) -> str:
         return formats[-1]["url"]
 
 
-def save_frame(frame, camera_id: str) -> None:
-    final_path = FRAMES_DIR / f"{camera_id}.jpg"
-    temp_path = FRAMES_DIR / f"{camera_id}_{os.getpid()}_tmp.jpg"
-    cv2.imwrite(str(temp_path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 78])
+def save_frame(frame, camera_id: str, suffix: str = "") -> None:
+    final_path = FRAMES_DIR / f"{camera_id}{suffix}.jpg"
+    temp_path = FRAMES_DIR / f"{camera_id}{suffix}_{os.getpid()}_tmp.jpg"
+    cv2.imwrite(str(temp_path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
     temp_path.replace(final_path)
 
 
@@ -150,8 +150,10 @@ def main() -> None:
                         frame = frame[crop_pixels:, :]
 
                 frame = cv2.resize(frame, (args.width, args.height))
-                frame = draw_detection_boxes(frame, load_recent_boxes(args.camera_id))
-                save_frame(annotate(frame, args.camera_id, args.site), args.camera_id)
+                save_frame(frame, args.camera_id, "_raw")
+
+                display_frame = draw_detection_boxes(frame.copy(), load_recent_boxes(args.camera_id))
+                save_frame(annotate(display_frame, args.camera_id, args.site), args.camera_id)
                 time.sleep(args.interval)
         except Exception as exc:
             retry_sleep = youtube_retry_sleep(exc) if is_youtube_source(args.url) else 3

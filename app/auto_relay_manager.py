@@ -109,7 +109,7 @@ def camera_key(camera):
 
 
 def cleanup_stale_files(camera_id):
-    for suffix in [".jpg", "_boxes.json"]:
+    for suffix in [".jpg", "_raw.jpg", "_boxes.json"]:
         try:
             (FRAMES_DIR / f"{camera_id}{suffix}").unlink(missing_ok=True)
         except Exception:
@@ -131,7 +131,7 @@ def start_camera(camera, api_url, env):
     grabber_width = "640"
     grabber_height = "640"
     relay_interval = "0.20" if speed_mode == "fast" else ("0.25" if is_rtsp else "0.5")
-    detect_every = "4" if speed_mode == "fast" else ("6" if is_rtsp else "8")
+    detect_every = "2" if speed_mode == "fast" else "3"
     detector_imgsz = "640"
 
     cleanup_stale_files(camera_id)
@@ -155,7 +155,7 @@ def start_camera(camera, api_url, env):
         "--model",
         selected_model_path(),
         "--conf",
-        "0.05",
+        "0.04",
         "--width",
         "640",
         "--height",
@@ -169,6 +169,8 @@ def start_camera(camera, api_url, env):
         "--max-lost-seconds",
         "20",
     ]
+    if not is_rtsp:
+        detector_cmd.extend(["--frame-input", str(FRAMES_DIR / f"{camera_id}_raw.jpg")])
 
     grabber_cmd = [
         sys.executable,

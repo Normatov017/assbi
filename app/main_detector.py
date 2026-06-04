@@ -69,6 +69,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="ASSBI Ultra Live Detector")
 
     parser.add_argument("--url", required=True)
+    parser.add_argument("--frame-input", default="", help="Read latest raw frame from this JPG instead of opening the stream twice")
     parser.add_argument("--camera-id", default="cam_01")
     parser.add_argument("--site", default="Default Site")
 
@@ -117,6 +118,20 @@ def open_source_with_low_latency(url):
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cap.set(cv2.CAP_PROP_FPS, 15)
     return cap
+
+
+def wait_for_frame_input(path: Path, last_mtime: float):
+    while True:
+        try:
+            if path.exists():
+                current_mtime = path.stat().st_mtime
+                if current_mtime != last_mtime:
+                    frame = cv2.imread(str(path))
+                    if frame is not None:
+                        return frame, current_mtime
+        except Exception:
+            pass
+        time.sleep(0.01)
 
 
 def open_source_with_retry(url: str, local_source: bool):
@@ -289,9 +304,10 @@ def pace_local_video(cap, video_start_wall, video_start_msec, speed_mode):
 
 def main():
     args = parse_args()
-    local_source = is_local_video(args.url)
+    frame_input_path = Path(args.frame_input).resolve() if args.frame_input else None
+    local_source = is_local_video(args.url) and frame_input_path is None
 
-    if args.fast_mode and not local_source:
+    if args.fast_mode and not local_source and frame_input_path is None:
         args.model = "yolov8n.pt"
         args.detect_every = max(args.detect_every, 4)
         args.width = min(args.width, 640)
@@ -311,7 +327,7 @@ def main():
 
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device}")
-    print(f"Source type: {'local video' if local_source else 'live/stream'}")
+    print(f"Source type: {'frame input' if frame_input_path else ('local video' if local_source else 'live/stream')}")
     print(f"Speed mode: {args.speed_mode}")
 
     model = load_model(args.model)
@@ -319,9 +335,10 @@ def main():
         model.fuse()
     except Exception:
         pass
-    cap = open_source_with_retry(args.url, local_source)
+    cap = None if frame_input_path else open_source_with_retry(args.url, local_source)
 
     video_start_wall, video_start_msec = reset_local_video_clock()
+    last_frame_input_mtime = 0.0
 
     abandoned = AbandonedObjectDetector()
     trails = TrailManager()
@@ -340,33 +357,36 @@ def main():
     print("ASSBI Ultra detector started. Press q to stop.")
 
     while True:
-        if not local_source:
-            for _ in range(3 if args.fast_mode else 1):
-                cap.grab()
+        if frame_input_path:
+            frame, last_frame_input_mtime = wait_for_frame_input(frame_input_path, last_frame_input_mtime)
+        else:
+            if not local_source:
+                for _ in range(1 if args.fast_mode else 0):
+                    cap.grab()
 
-        ret, frame = cap.read()
+            ret, frame = cap.read()
 
-        if not ret:
-            print("Frame lost or video ended. Restarting source...")
-            cap.release()
+            if not ret:
+                print("Frame lost or video ended. Restarting source...")
+                cap.release()
+
+                if local_source:
+                    time.sleep(0.2)
+                    cap = cv2.VideoCapture(args.url)
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    video_start_wall, video_start_msec = reset_local_video_clock()
+                else:
+                    cap = open_source_with_retry(args.url, local_source)
+
+                continue
 
             if local_source:
-                time.sleep(0.2)
-                cap = cv2.VideoCapture(args.url)
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                video_start_wall, video_start_msec = reset_local_video_clock()
-            else:
-                cap = open_source_with_retry(args.url, local_source)
-
-            continue
-
-        if local_source:
-            pace_local_video(
-                cap,
-                video_start_wall,
-                video_start_msec,
-                args.speed_mode,
-            )
+                pace_local_video(
+                    cap,
+                    video_start_wall,
+                    video_start_msec,
+                    args.speed_mode,
+                )
 
         if args.crop_top_ratio > 0:
             crop_pixels = int(frame.shape[0] * min(max(args.crop_top_ratio, 0.0), 0.4))
@@ -595,7 +615,8 @@ def main():
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
-    cap.release()
+    if cap is not None:
+        cap.release()
     cv2.destroyAllWindows()
 
 

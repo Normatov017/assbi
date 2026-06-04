@@ -957,11 +957,12 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
             "--width", "640",
             "--height", "640",
             "--imgsz", "640",
-            "--conf", "0.07",
-            "--detect-every", "4" if speed_mode == "fast" else "6",
+            "--conf", "0.04",
+            "--detect-every", "2" if speed_mode == "fast" else "3",
             "--log-every", "1",
-            "--crop-top-ratio", "0.20",
             "--no-frame-output",
+            "--frame-input",
+            str(FRAMES_DIR / f"{camera_id}_raw.jpg"),
         ])
     elif is_local_video(url):
         cmd.extend(["--detect-every", "3", "--log-every", "5"])
@@ -969,9 +970,11 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
         cmd.extend([
             "--fast-mode",
             "--imgsz", "640",
-            "--detect-every", "4" if speed_mode == "fast" else "6",
+            "--detect-every", "2" if speed_mode == "fast" else "3",
             "--log-every", "1",
             "--no-frame-output",
+            "--frame-input",
+            str(FRAMES_DIR / f"{camera_id}_raw.jpg"),
         ])
 
     processes.append(spawn(cmd, "detector"))
