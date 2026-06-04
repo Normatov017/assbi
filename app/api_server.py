@@ -970,6 +970,7 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
         cmd.extend([
             "--fast-mode",
             "--imgsz", "640",
+            "--conf", "0.04",
             "--detect-every", "2" if speed_mode == "fast" else "3",
             "--log-every", "1",
             "--no-frame-output",
