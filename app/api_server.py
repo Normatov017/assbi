@@ -1639,12 +1639,21 @@ async def ingest_camera_frame(
 def delete_camera(camera_id: str, request: Request):
     stop_detector(camera_id)
 
+    removed_camera = next((cam for cam in load_cameras() if cam.get("camera_id") == camera_id), None)
     cameras_data = [cam for cam in load_cameras() if cam.get("camera_id") != camera_id]
     save_cameras(cameras_data)
 
-    frame_path = FRAMES_DIR / f"{camera_id}.jpg"
-    if frame_path.exists():
-        frame_path.unlink()
+    for frame_path in [FRAMES_DIR / f"{camera_id}.jpg", FRAMES_DIR / f"{camera_id}_boxes.json"]:
+        if frame_path.exists():
+            frame_path.unlink()
+
+    source_url = safe_str((removed_camera or {}).get("url"))
+    try:
+        source_path = Path(source_url)
+        if source_path.exists() and UPLOADS_DIR in source_path.resolve().parents:
+            source_path.unlink()
+    except Exception:
+        pass
 
     audit_event(request, "camera.delete", f"camera_id={camera_id}")
     return {"ok": True, "camera_id": camera_id, "cameras": cameras_data}
