@@ -13,11 +13,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+import cv2
+import numpy as np
 import pandas as pd
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
+from ultralytics import YOLO
 
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.graphics.charts.piecharts import Pie
@@ -46,6 +49,7 @@ CAMERAS_FILE = STREAMS_DIR / "cameras.json"
 SETTINGS_FILE = STREAMS_DIR / "settings.json"
 MODELS_DIR = BASE_DIR / "models"
 TRAINING_DIR = BASE_DIR / "training"
+TEST_OUTPUT_DIR = EXPORTS_DIR / "fine_tuning_tests"
 
 FRAMES_DIR.mkdir(exist_ok=True)
 STREAMS_DIR.mkdir(exist_ok=True)
@@ -54,6 +58,7 @@ EXPORTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 MODELS_DIR.mkdir(exist_ok=True)
 TRAINING_DIR.mkdir(exist_ok=True)
+TEST_OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="ASSBI Ultra API", version="3.0.0")
 
@@ -449,6 +454,26 @@ def resolve_detection_model(model_id: str) -> str:
     if clean in {"yolov8n.pt", "yolov8s.pt"}:
         return clean
     return "yolov8n.pt"
+
+
+def draw_test_detection(frame, detections):
+    colors = {
+        "person": (0, 220, 0),
+        "car": (255, 0, 255),
+        "motorcycle": (255, 0, 255),
+        "bus": (255, 0, 255),
+        "truck": (255, 0, 255),
+    }
+    for item in detections:
+        x1, y1, x2, y2 = item["xyxy"]
+        label = item["label"]
+        conf = item["confidence"]
+        color = colors.get(label, (0, 200, 255))
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        text = f"{label} {conf:.2f}"
+        cv2.rectangle(frame, (x1, max(0, y1 - 20)), (min(frame.shape[1] - 1, x1 + 120), y1), color, -1)
+        cv2.putText(frame, text, (x1 + 4, max(14, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.43, (0, 0, 0), 1)
+    return frame
 
 
 def latest_by_camera(df: pd.DataFrame) -> pd.DataFrame:
@@ -1758,6 +1783,69 @@ def select_fine_tuned_model(payload: ModelSelectionPayload, request: Request):
     saved = save_settings({"detection_model": model_id})
     audit_event(request, "fine_tuning.model_select", model_id)
     return {"ok": True, "current_model": model_id, "resolved_model": resolve_detection_model(model_id), "settings": saved}
+
+
+@app.post("/api/fine-tuning/test-image")
+async def test_fine_tuning_image(
+    request: Request,
+    image: UploadFile = File(...),
+    conf: float = Form(0.25),
+):
+    filename = Path(image.filename or "test.jpg").name.replace(" ", "_")
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        return JSONResponse({"ok": False, "message": "Only JPG, PNG or WEBP images are supported."}, status_code=400)
+
+    raw = await image.read()
+    array = np.frombuffer(raw, dtype=np.uint8)
+    frame = cv2.imdecode(array, cv2.IMREAD_COLOR)
+    if frame is None:
+        return JSONResponse({"ok": False, "message": "Uploaded file is not a valid image."}, status_code=400)
+
+    settings = load_settings()
+    selected = str(settings.get("detection_model", "yolov8n.pt"))
+    model_path = resolve_detection_model(selected)
+    model = YOLO(model_path)
+    results = model.predict(frame, conf=max(0.01, min(float(conf), 0.99)), imgsz=640, verbose=False)
+
+    detections = []
+    counts: dict[str, int] = {}
+    names = getattr(model, "names", {}) or {}
+    for result in results:
+        if result.boxes is None:
+            continue
+        for box in result.boxes:
+            cls_id = int(box.cls[0])
+            label = str(names.get(cls_id, cls_id))
+            confidence = float(box.conf[0])
+            xyxy = [int(value) for value in box.xyxy[0].tolist()]
+            detections.append({"class_id": cls_id, "label": label, "confidence": round(confidence, 4), "xyxy": xyxy})
+            counts[label] = counts.get(label, 0) + 1
+
+    annotated = draw_test_detection(frame.copy(), detections)
+    output_name = f"test_{int(time.time())}_{Path(filename).stem}.jpg"
+    output_path = TEST_OUTPUT_DIR / output_name
+    cv2.imwrite(str(output_path), annotated, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+
+    audit_event(request, "fine_tuning.test_image", f"file={filename}; detections={len(detections)}")
+    return {
+        "ok": True,
+        "model": selected,
+        "resolved_model": model_path,
+        "detections": detections,
+        "counts": counts,
+        "total": len(detections),
+        "annotated_url": f"/api/fine-tuning/test-image/{output_name}",
+    }
+
+
+@app.get("/api/fine-tuning/test-image/{filename}")
+def fine_tuning_test_image(filename: str):
+    safe_name = Path(filename).name
+    path = TEST_OUTPUT_DIR / safe_name
+    if not path.exists():
+        return JSONResponse({"ok": False, "message": "Test image not found."}, status_code=404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/thresholds")

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, CheckCircle2, Cpu, RefreshCw, Upload, Zap } from "lucide-react";
+import { BrainCircuit, CheckCircle2, Cpu, ImageUp, RefreshCw, Upload, Zap } from "lucide-react";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -25,11 +25,21 @@ type FineTuneStatus = {
   training_dir: string;
 };
 
+type TestImageResult = {
+  ok: boolean;
+  model: string;
+  counts: Record<string, number>;
+  total: number;
+  annotated_url: string;
+};
+
 export default function FineTuning() {
   const [status, setStatus] = useState<FineTuneStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingModel, setSavingModel] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [testingImage, setTestingImage] = useState(false);
+  const [testResult, setTestResult] = useState<TestImageResult | null>(null);
   const [message, setMessage] = useState("");
 
   const activeModel = useMemo(
@@ -91,6 +101,37 @@ export default function FineTuning() {
       setMessage(error instanceof Error ? error.message : "Model upload xatosi.");
     } finally {
       setUploading(false);
+    }
+  }
+
+
+
+  async function testImage(file?: File) {
+    if (!file) return;
+    if (!/\.(jpg|jpeg|png|webp)$/i.test(file.name)) {
+      setMessage("Test uchun JPG, PNG yoki WEBP rasm yuklang.");
+      return;
+    }
+
+    try {
+      setTestingImage(true);
+      setTestResult(null);
+      const form = new FormData();
+      form.append("image", file);
+      form.append("conf", "0.25");
+      const res = await fetch(`${API}/api/fine-tuning/test-image`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data?.message || "Test image ishlamadi.");
+      setTestResult(data);
+      setMessage(`${file.name} test qilindi: ${data.total} ta detection.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Test image xatosi.");
+    } finally {
+      setTestingImage(false);
     }
   }
 
