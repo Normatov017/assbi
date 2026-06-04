@@ -119,8 +119,24 @@ function qualityBadge(value: number) {
   return "bg-red-500 text-white";
 }
 
-function statusBadge(running?: boolean) {
+function hasLiveFrame(camera?: CameraType) {
+  return Boolean(
+    camera?.running &&
+      (camera.has_frame ||
+        numberValue(camera.fps) > 0 ||
+        numberValue(camera.quality) > 0)
+  );
+}
+
+function statusBadge(running?: boolean, healthy?: boolean) {
+  if (running && healthy === false) return "bg-yellow-500 text-black";
   return running ? "bg-green-500 text-white" : "bg-red-500 text-white";
+}
+
+function statusLabel(camera?: CameraType, t?: (key: string) => string) {
+  if (!camera?.running) return t ? t("common.offline") : "Offline";
+  if (!hasLiveFrame(camera)) return t ? t("live.noFrame") : "No frame";
+  return t ? t("common.online") : "Online";
 }
 
 function getTotalObjects(cam?: CameraType) {
@@ -516,7 +532,7 @@ export default function LiveSurveillance() {
   const selectedFrameUrl = getFrameUrl(selectedCamera);
   const selectedStreamUrl = getStreamUrl(selectedCamera);
   const selectedYoutubeEmbedUrl = getYoutubeEmbedUrl(selectedCamera);
-  const selectedHasFrame = Boolean(selectedCamera?.has_frame);
+  const selectedHasFrame = hasLiveFrame(selectedCamera);
   const canShowOriginalStream = Boolean(selectedYoutubeEmbedUrl);
   const canShowDetectionStream = Boolean(selectedCamera?.running && selectedHasFrame && selectedStreamUrl);
   const useDetectionStream = canShowDetectionStream && (!canShowOriginalStream || streamMode === "detection");
@@ -578,11 +594,11 @@ export default function LiveSurveillance() {
   function exportSnapshot() {
     if (!selectedCamera) return;
 
-    window.open(`${API}/api/cameras/${selectedCamera.camera_id}/snapshot`, "_blank");
+    window.open(`${API}/api/snapshot/${selectedCamera.camera_id}`, "_blank");
   }
 
   function exportCameraReport() {
-    window.open(`${API}/api/reports/cameras/excel`, "_blank");
+    window.open(`${API}/api/reports/analytics/excel`, "_blank");
   }
 
   return (
@@ -636,7 +652,7 @@ export default function LiveSurveillance() {
             {t("common.refresh")}
           </Button>
 
-          <Button variant="outline" onClick={exportSnapshot}>
+          <Button variant="outline" onClick={exportSnapshot} disabled={!selectedCamera || !selectedHasFrame}>
             <Download className="size-4 mr-2" />
             {t("live.snapshot")}
           </Button>
@@ -678,8 +694,8 @@ export default function LiveSurveillance() {
             <div className="grid grid-cols-2 md:grid-cols-4 xl:col-span-2 gap-3">
               <MiniCameraStatus
                 label={t("common.status")}
-                value={selectedCamera?.running ? t("common.online") : t("common.offline")}
-                tone={selectedCamera?.running ? "good" : "bad"}
+                value={statusLabel(selectedCamera, t)}
+                tone={!selectedCamera?.running ? "bad" : selectedHasFrame ? "good" : "warning"}
               />
               <MiniCameraStatus
                 label="FPS"
@@ -731,8 +747,8 @@ export default function LiveSurveillance() {
 
                       {selectedCamera && (
                         <>
-                          <Badge className={statusBadge(selectedCamera.running)}>
-                            {selectedCamera.running ? t("common.live").toUpperCase() : t("common.offline").toUpperCase()}
+                          <Badge className={statusBadge(selectedCamera.running, selectedHasFrame)}>
+                            {statusLabel(selectedCamera, t).toUpperCase()}
                           </Badge>
 
                           <Badge
@@ -838,7 +854,7 @@ export default function LiveSurveillance() {
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowFullScreen
                   />
-                ) : selectedCamera && selectedFrameUrl ? (
+                ) : selectedCamera && selectedHasFrame && selectedFrameUrl ? (
                   <img
                     key={`${selectedCamera.camera_id}-${lastUpdated.getTime()}`}
                     src={selectedFrameUrl}
@@ -972,7 +988,7 @@ export default function LiveSurveillance() {
                       />
                       <MetricBox
                         label={t("common.status")}
-                        value={selectedCamera.running ? t("common.online") : t("common.offline")}
+                        value={statusLabel(selectedCamera, t)}
                       />
                     </div>
                   </>
@@ -1087,8 +1103,8 @@ export default function LiveSurveillance() {
                           </TableCell>
 
                           <TableCell>
-                            <Badge className={statusBadge(camera.running)}>
-                              {camera.running ? t("common.online").toUpperCase() : t("common.offline").toUpperCase()}
+                            <Badge className={statusBadge(camera.running, hasLiveFrame(camera))}>
+                              {statusLabel(camera, t).toUpperCase()}
                             </Badge>
                           </TableCell>
 
@@ -1237,8 +1253,10 @@ export default function LiveSurveillance() {
                           className={`mt-1 h-12 w-1.5 rounded-full ${
                             active
                               ? "bg-blue-500"
-                              : camera.running
+                              : hasLiveFrame(camera)
                               ? "bg-green-500/80"
+                              : camera.running
+                              ? "bg-yellow-500/80"
                               : "bg-red-500/80"
                           }`}
                         />
@@ -1261,8 +1279,8 @@ export default function LiveSurveillance() {
                               </p>
                             </div>
 
-                            <Badge className={statusBadge(camera.running)}>
-                              {camera.running ? t("common.online").toUpperCase() : t("common.offline").toUpperCase()}
+                            <Badge className={statusBadge(camera.running, hasLiveFrame(camera))}>
+                              {statusLabel(camera, t).toUpperCase()}
                             </Badge>
                           </div>
 
@@ -1382,8 +1400,8 @@ export default function LiveSurveillance() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Badge className={statusBadge(selectedCamera.running)}>
-                  {selectedCamera.running ? t("common.live").toUpperCase() : t("common.offline").toUpperCase()}
+                <Badge className={statusBadge(selectedCamera.running, selectedHasFrame)}>
+                  {statusLabel(selectedCamera, t).toUpperCase()}
                 </Badge>
                 <Badge className={riskBadge(numberValue(selectedCamera.risk_score))}>
                   {formatPercent(selectedCamera.risk_score)} {t("common.risk").toUpperCase()}

@@ -1726,6 +1726,7 @@ def stream_camera(camera_id: str):
 
 
 @app.get("/api/snapshot/{camera_id}")
+@app.get("/api/cameras/{camera_id}/snapshot")
 def export_snapshot(camera_id: str):
     frame_path = FRAMES_DIR / f"{camera_id}.jpg"
     if not frame_path.exists():
@@ -2081,6 +2082,7 @@ def export_incidents_csv(
 
 
 @app.get("/api/reports/analytics/excel")
+@app.get("/api/reports/cameras/excel")
 def export_analytics_excel(
     camera_id: Optional[str] = Query(default=None),
     start_date: Optional[str] = Query(default=None),
