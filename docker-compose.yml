@@ -24,6 +24,7 @@ services:
       - ./exports:/app/exports
       - ./streams:/app/streams
       - ./models:/app/models
+      - ./datasets/custom_assbi_yolo:/app/datasets/custom_assbi_yolo
     ports:
       - "8000:8000"
 

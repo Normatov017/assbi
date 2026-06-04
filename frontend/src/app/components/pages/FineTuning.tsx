@@ -73,6 +73,7 @@ export default function FineTuning() {
   const [testingImage, setTestingImage] = useState(false);
   const [testResult, setTestResult] = useState<TestImageResult | null>(null);
   const [training, setTraining] = useState<TrainingStatus | null>(null);
+  const [uploadingDataset, setUploadingDataset] = useState(false);
   const [startingTraining, setStartingTraining] = useState(false);
   const [trainModel, setTrainModel] = useState("yolo11m.pt");
   const [trainEpochs, setTrainEpochs] = useState(80);
@@ -145,6 +146,34 @@ export default function FineTuning() {
   }
 
 
+
+
+  async function uploadDataset(file?: File) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      setMessage("Dataset uchun .zip fayl yuklang.");
+      return;
+    }
+    try {
+      setUploadingDataset(true);
+      const form = new FormData();
+      form.append("dataset", file);
+      const res = await fetch(`${API}/api/fine-tuning/dataset/upload`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data?.message || "Dataset yuklanmadi.");
+      setStatus((prev) => prev ? { ...prev, dataset: data } : prev);
+      setMessage(`${file.name} dataset yuklandi: ${data.total_images} images, ${data.total_labels} labels.`);
+      await loadStatus();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Dataset upload xatosi.");
+    } finally {
+      setUploadingDataset(false);
+    }
+  }
 
   async function loadTrainingStatus() {
     try {
@@ -311,6 +340,19 @@ export default function FineTuning() {
               <p className="mt-1 text-xs text-muted-foreground">{trainingState?.updated_at || "-"}</p>
             </div>
           </div>
+
+          <div className="rounded-md border bg-muted/20 p-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="font-medium">Dataset ZIP upload</p>
+                <p className="mt-1 text-xs text-muted-foreground">ZIP ichida <span className="font-mono">data.yaml</span>, <span className="font-mono">train/valid/test/images</span> va <span className="font-mono">labels</span> papkalari bo‘lsin.</p>
+              </div>
+              <Input className="md:max-w-sm" type="file" accept=".zip" disabled={uploadingDataset || Boolean(trainingState?.running)} onChange={(event) => uploadDataset(event.target.files?.[0])} />
+            </div>
+            {uploadingDataset ? <p className="mt-2 text-sm text-muted-foreground">Dataset yuklanmoqda...</p> : null}
+          </div>
+
+
 
           <div className="grid gap-3 md:grid-cols-5">
             <div className="space-y-2">

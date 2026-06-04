@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import zipfile
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -1867,6 +1868,62 @@ def fine_tuning_status():
 @app.get("/api/fine-tuning/dataset")
 def fine_tuning_dataset_status():
     return {"ok": True, **yolo_dataset_status()}
+
+
+@app.post("/api/fine-tuning/dataset/upload")
+async def upload_fine_tuning_dataset(request: Request, dataset: UploadFile = File(...)):
+    filename = Path(dataset.filename or "dataset.zip").name
+    if not filename.lower().endswith(".zip"):
+        return JSONResponse({"ok": False, "message": "Faqat YOLO dataset .zip fayl yuklanadi."}, status_code=400)
+
+    upload_path = UPLOADS_DIR / f"dataset_{int(time.time())}.zip"
+    with upload_path.open("wb") as handle:
+        while True:
+            chunk = await dataset.read(1024 * 1024)
+            if not chunk:
+                break
+            handle.write(chunk)
+
+    tmp_dir = TRAINING_DIR / f"dataset_upload_{int(time.time())}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with zipfile.ZipFile(upload_path) as archive:
+            for member in archive.infolist():
+                member_path = Path(member.filename)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    return JSONResponse({"ok": False, "message": "ZIP ichida xavfsiz bo‘lmagan path bor."}, status_code=400)
+            archive.extractall(tmp_dir)
+
+        candidates = [tmp_dir]
+        candidates.extend([p for p in tmp_dir.iterdir() if p.is_dir()])
+        source_root = next((p for p in candidates if (p / "data.yaml").exists()), None)
+        if source_root is None:
+            return JSONResponse({"ok": False, "message": "ZIP ichida data.yaml topilmadi."}, status_code=400)
+
+        CUSTOM_DATASET_DIR.mkdir(parents=True, exist_ok=True)
+        for name in ("data.yaml", "classes.txt", "README.md"):
+            src = source_root / name
+            if src.exists():
+                (CUSTOM_DATASET_DIR / name).write_bytes(src.read_bytes())
+        for split in ("train", "valid", "test"):
+            for kind in ("images", "labels"):
+                src_dir = source_root / split / kind
+                dst_dir = CUSTOM_DATASET_DIR / split / kind
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                if not src_dir.exists():
+                    continue
+                for src in src_dir.iterdir():
+                    if src.is_file():
+                        (dst_dir / src.name).write_bytes(src.read_bytes())
+
+        status = yolo_dataset_status()
+        audit_event(request, "fine_tuning.dataset_upload", f"file={filename}; images={status['total_images']}")
+        return {"ok": True, "message": "Dataset yuklandi.", **status}
+    finally:
+        try:
+            upload_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 @app.get("/api/fine-tuning/train/status")
