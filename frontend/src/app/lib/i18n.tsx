@@ -294,6 +294,7 @@ const dictionary: Dictionary = {
   "live.todayVisitors": { uz: "Bugungi kirganlar", ru: "Посетители сегодня", en: "Today Visitors" },
   "live.totalUnique": { uz: "Umumiy unique", ru: "Всего уникальных", en: "Total Unique" },
   "live.noFrame": { uz: "Frame yo‘q", ru: "Нет кадра", en: "No frame" },
+  "live.originalAvailable": { uz: "Original", ru: "Оригинал", en: "Original" },
   "live.frameUnavailable": { uz: "Kamera frame mavjud emas", ru: "Кадр камеры недоступен", en: "Camera frame not available" },
   "live.frameUnavailableHint": {
     uz: "RTSP kamera shu tarmoqdan ochilayotganini, URL/parol to‘g‘riligini va detector frame olayotganini tekshiring.",

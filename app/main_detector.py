@@ -120,7 +120,7 @@ def open_source_with_low_latency(url):
 
 
 def open_source_with_retry(url: str, local_source: bool):
-    retry_sleep = 60 if is_youtube_source(url) else 3
+    retry_sleep = 5 if is_youtube_source(url) else 3
     while True:
         try:
             cap = open_source_with_low_latency(url)

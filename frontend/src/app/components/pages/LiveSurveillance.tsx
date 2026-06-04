@@ -128,8 +128,15 @@ function statusBadge(running?: boolean, healthy?: boolean) {
   return running ? "bg-green-500 text-white" : "bg-red-500 text-white";
 }
 
+function hasYoutubeOriginal(camera?: CameraType) {
+  return Boolean(getYoutubeEmbedUrl(camera));
+}
+
 function statusLabel(camera?: CameraType, t?: (key: string) => string) {
   if (!camera?.running) return t ? t("common.offline") : "Offline";
+  if (!hasLiveFrame(camera) && hasYoutubeOriginal(camera)) {
+    return t ? t("live.originalAvailable") : "Original";
+  }
   if (!hasLiveFrame(camera)) return t ? t("live.noFrame") : "No frame";
   return t ? t("common.online") : "Online";
 }
