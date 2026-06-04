@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import yt_dlp
 
-from utils_video import is_youtube_source, youtube_dlp_options
+from utils_video import is_youtube_source, youtube_dlp_options, youtube_retry_sleep
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -154,7 +154,7 @@ def main() -> None:
                 save_frame(annotate(frame, args.camera_id, args.site), args.camera_id)
                 time.sleep(args.interval)
         except Exception as exc:
-            retry_sleep = 5 if is_youtube_source(args.url) else 3
+            retry_sleep = youtube_retry_sleep(exc) if is_youtube_source(args.url) else 3
             print(f"[ASSBI] frame_grabber retrying in {retry_sleep}s: {exc}", flush=True)
             time.sleep(retry_sleep)
         finally:

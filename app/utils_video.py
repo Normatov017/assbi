@@ -45,6 +45,14 @@ def youtube_dlp_options(quiet: bool = True):
     }
 
 
+
+
+def youtube_retry_sleep(exc=None) -> int:
+    text = str(exc or "").lower()
+    if "rate-limited" in text or "rate limited" in text or "try again later" in text:
+        return 600
+    return 60
+
 def get_youtube_stream_url(url):
     opts = youtube_dlp_options()
     with yt_dlp.YoutubeDL(opts) as ydl:

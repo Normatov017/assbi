@@ -27,7 +27,7 @@ from modules.advanced_ai import (
     license_plate_recognition_placeholder,
     fight_aggression_detection_placeholder,
 )
-from utils_video import is_youtube_source, open_video_source, draw_zones
+from utils_video import is_youtube_source, open_video_source, draw_zones, youtube_retry_sleep
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRAMES_DIR = BASE_DIR / "frames"
@@ -120,11 +120,11 @@ def open_source_with_low_latency(url):
 
 
 def open_source_with_retry(url: str, local_source: bool):
-    retry_sleep = 5 if is_youtube_source(url) else 3
     while True:
         try:
             cap = open_source_with_low_latency(url)
         except Exception as exc:
+            retry_sleep = youtube_retry_sleep(exc) if is_youtube_source(url) else 3
             print(f"ERROR: video stream cannot be opened, retrying in {retry_sleep}s: {exc}", flush=True)
             time.sleep(retry_sleep)
             continue
@@ -132,6 +132,7 @@ def open_source_with_retry(url: str, local_source: bool):
         if cap.isOpened():
             return cap
 
+        retry_sleep = 60 if is_youtube_source(url) else 3
         print(f"ERROR: video stream cannot be opened, retrying in {retry_sleep}s.", flush=True)
         try:
             cap.release()
