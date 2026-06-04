@@ -33,6 +33,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 FRAMES_DIR = BASE_DIR / "frames"
 FRAMES_DIR.mkdir(exist_ok=True)
 
+os.environ.setdefault(
+    "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+    "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;500000",
+)
+
 DETECT_CLASSES = [0, 2, 3, 5, 7, 24, 26, 28, 63, 67]
 
 
@@ -389,17 +394,23 @@ def main():
         if frame_index % args.detect_every == 0:
             latest_boxes = []
 
-            results = model.track(
-                frame,
-                conf=args.conf,
-                iou=0.35,
-                imgsz=args.imgsz,
-                persist=True,
-                tracker="bytetrack.yaml",
-                verbose=False,
-                classes=DETECT_CLASSES,
-                device=device,
-            )
+            inference_args = {
+                "conf": args.conf,
+                "iou": 0.35,
+                "imgsz": args.imgsz,
+                "verbose": False,
+                "classes": DETECT_CLASSES,
+                "device": device,
+            }
+            if args.fast_mode:
+                results = model.predict(frame, **inference_args)
+            else:
+                results = model.track(
+                    frame,
+                    persist=True,
+                    tracker="bytetrack.yaml",
+                    **inference_args,
+                )
 
             for result in results:
                 if result.boxes is None:
