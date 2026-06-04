@@ -2711,6 +2711,84 @@ def ask_openai_assistant(user_message: str, context: dict[str, Any]) -> Optional
         return None
 
 
+def text_has_any(text: str, words: list[str]) -> bool:
+    return any(word in text for word in words)
+
+
+def wants_uzbek(text: str) -> bool:
+    return text_has_any(
+        text,
+        [
+            "qancha", "qaysi", "qayer", "kamera", "odam", "odamlar", "hozir",
+            "bugun", "xavf", "risk", "ishlayap", "ishlayab", "ishlamay", "eng",
+            "hisobot", "hodisa", "obyekt", "mashina", "telefon", "noutbuk", "sifat",
+        ],
+    )
+
+
+def camera_display_name(camera: dict[str, Any]) -> str:
+    return str(camera.get("site") or camera.get("camera_id") or "Unknown")
+
+
+def sorted_live_cameras(camera_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        camera_data,
+        key=lambda item: (safe_int(item.get("active_people", 0)), safe_float(item.get("fps", 0)), safe_int(item.get("risk_score", 0))),
+        reverse=True,
+    )
+
+
+def format_live_people_by_camera(camera_data: list[dict[str, Any]], uz: bool) -> str:
+    if not camera_data:
+        return "Hozir kamera topilmadi." if uz else "No cameras are currently configured."
+
+    live = sorted_live_cameras(camera_data)
+    total_people = sum(safe_int(camera.get("active_people", 0)) for camera in live if camera.get("running"))
+    lines = []
+    for camera in live:
+        status = "online" if camera.get("running") else "offline"
+        has_frame = bool(camera.get("has_frame"))
+        frame_status = "frame bor" if has_frame else "frame yo‘q"
+        lines.append(
+            f"- {camera_display_name(camera)} ({camera.get('camera_id', '-')}) — "
+            f"{safe_int(camera.get('active_people', 0))} odam, "
+            f"risk {safe_int(camera.get('risk_score', 0))}%, "
+            f"FPS {safe_float(camera.get('fps', 0)):.1f}, {status}, {frame_status}"
+        )
+
+    if uz:
+        return "Hozir live kameralar bo‘yicha odamlar:\n" + "\n".join(lines) + f"\nJami live odam: {total_people}."
+    return "Current live people by camera:\n" + "\n".join(lines) + f"\nTotal live people: {total_people}."
+
+
+def format_camera_status(camera_data: list[dict[str, Any]], uz: bool) -> str:
+    total = len(camera_data)
+    online = len([c for c in camera_data if c.get("running") and c.get("has_frame")])
+    no_frame = len([c for c in camera_data if c.get("running") and not c.get("has_frame")])
+    offline = total - online - no_frame
+    if uz:
+        return f"Kamera statusi: {online} ta live/frame bor, {no_frame} ta process bor lekin frame yo‘q, {offline} ta offline. Jami {total} kamera."
+    return f"Camera status: {online} live with frames, {no_frame} running without frames, {offline} offline. {total} total cameras."
+
+
+def format_highest_risk(camera_data: list[dict[str, Any]], uz: bool) -> str:
+    if not camera_data:
+        return "Kamera topilmadi." if uz else "No cameras are currently configured."
+    highest = max(camera_data, key=lambda x: safe_int(x.get("risk_score", 0)))
+    if uz:
+        return f"Eng yuqori risk: {camera_display_name(highest)} ({highest.get('camera_id', '-')}) — {safe_int(highest.get('risk_score', 0))}% risk, {safe_int(highest.get('active_people', 0))} odam."
+    return f"The highest risk camera is {camera_display_name(highest)} ({highest.get('camera_id', '-')}) with {safe_int(highest.get('risk_score', 0))}% risk and {safe_int(highest.get('active_people', 0))} active people."
+
+
+def format_busiest_camera(camera_data: list[dict[str, Any]], uz: bool) -> str:
+    if not camera_data:
+        return "Kamera topilmadi." if uz else "No cameras are currently configured."
+    busiest = max(camera_data, key=lambda x: safe_int(x.get("active_people", 0)))
+    if uz:
+        return f"Eng gavjum kamera: {camera_display_name(busiest)} ({busiest.get('camera_id', '-')}) — {safe_int(busiest.get('active_people', 0))} odam, risk {safe_int(busiest.get('risk_score', 0))}%."
+    return f"The busiest camera is {camera_display_name(busiest)} ({busiest.get('camera_id', '-')}) with {safe_int(busiest.get('active_people', 0))} active people."
+
+
 @app.delete("/api/cleanup/demo")
 def cleanup_demo_data():
     return maintenance_cleanup({"keep_days": 9999})
@@ -2725,9 +2803,10 @@ def ai_chat(req: ChatRequest):
     camera_data = build_cameras_response()
     df_analytics = read_table("minute_analytics")
     df_incidents = read_table("incidents")
+    uz = wants_uzbek(message)
 
     if not message:
-        return {"reply": "Please ask something about people, risk, cameras, incidents, objects or analytics."}
+        return {"reply": "Kamera, odamlar, risk, incident yoki analytics haqida savol yozing." if uz else "Please ask something about people, risk, cameras, incidents, objects or analytics.", "source": "fallback"}
 
     ai_reply = ask_openai_assistant(
         original_message,
@@ -2739,117 +2818,99 @@ def ai_chat(req: ChatRequest):
     if message in {"hi", "hello", "hey", "salom", "assalomu alaykum", "salam"}:
         return {
             "reply": (
-                "Salom! ASSBI bo‘yicha yordam beraman. OpenAI token ulangan bo‘lsa, "
-                "istalgan savolga kengroq javob beraman; hozir esa kamera, risk, odamlar, "
-                "obyektlar va analytics bo‘yicha asosiy savollarga javob bera olaman."
+                "Salom! Men ASSBI AI yordamchiman. Hozirgi odamlar soni, qaysi kamerada nechta odam bor, "
+                "risk, FPS, stream sifati, obyektlar, incidentlar va umumiy holat haqida so‘rashingiz mumkin."
+                if uz else
+                "Hello! I am your ASSBI AI assistant. Ask about live people, cameras, risk, FPS, quality, objects, incidents and summaries."
             ),
             "source": "fallback",
         }
 
-    if "peak" in message or "pik" in message or "eng ko'p" in message or "eng kop" in message:
+    live_people_words = ["live", "hozir", "real time", "realtime", "real-time", "ayni payt", "shu payt", "odam", "odamlar", "people", "person", "qancha"]
+    camera_words = ["qaysi kamera", "kamerada", "kamera", "camera", "cameras", "where", "qayer"]
+    if text_has_any(message, live_people_words) and (text_has_any(message, camera_words) or text_has_any(message, ["qancha", "count", "soni"])):
+        return {"reply": format_live_people_by_camera(camera_data, uz), "source": "fallback"}
+
+    if text_has_any(message, ["highest risk", "risk camera", "most risky", "eng yuqori risk", "eng xavf", "xavfli", "risk baland", "yuqori risk"]):
+        return {"reply": format_highest_risk(camera_data, uz), "source": "fallback"}
+
+    if text_has_any(message, ["busiest", "most people", "crowded", "eng gavjum", "eng ko'p odam", "eng kop odam", "odam eng ko'p", "odam eng kop"]):
+        return {"reply": format_busiest_camera(camera_data, uz), "source": "fallback"}
+
+    if text_has_any(message, ["offline", "online", "camera status", "kamera status", "kameralar ishlay", "ishlayaptimi", "ishlayabdimi", "frame yo'q", "frame yuq"]):
+        return {"reply": format_camera_status(camera_data, uz), "source": "fallback"}
+
+    if text_has_any(message, ["summary", "overview", "security report", "xulosa", "umumiy", "holat", "hisobot"]):
+        if uz:
+            reply = (
+                f"Umumiy holat: {kpis.get('active_people', 0)} live odam, "
+                f"{kpis.get('total_unique', 0)} total unique, risk {kpis.get('risk_score', 0)}%, "
+                f"{kpis.get('incidents', 0)} incident, {kpis.get('laptops', 0)} noutbuk, "
+                f"{kpis.get('phones', 0)} telefon, {kpis.get('vehicles', 0)} transport va "
+                f"{kpis.get('objects', 0)} obyekt aniqlangan."
+            )
+        else:
+            reply = (
+                f"Security summary: {kpis.get('active_people', 0)} active people, "
+                f"{kpis.get('total_unique', 0)} total unique people, {kpis.get('risk_score', 0)}% risk, "
+                f"{kpis.get('incidents', 0)} incidents, {kpis.get('laptops', 0)} laptops, "
+                f"{kpis.get('phones', 0)} phones, {kpis.get('vehicles', 0)} vehicles and {kpis.get('objects', 0)} objects."
+            )
+        return {"reply": reply, "source": "fallback"}
+
+    if text_has_any(message, ["peak", "pik", "eng ko'p", "eng kop", "qaysi vaqt", "vaqt"]):
         peak = find_peak_period(df_analytics)
         if peak:
-            return {
-                "reply": (
-                    f"Eng gavjum vaqt: {peak['time']} atrofida. Shu paytda live odamlar "
-                    f"soni {peak['people']} bo‘lgan, risk {peak['risk']}%."
-                ),
-                "source": "fallback",
-            }
-        return {
-            "reply": "Peak vaqtni hisoblash uchun hali yetarli analytics ma’lumot yo‘q.",
-            "source": "fallback",
-        }
+            return {"reply": f"Eng gavjum vaqt: {peak['time']} atrofida. Shu paytda {peak['people']} odam bo‘lgan, risk {peak['risk']}%." if uz else f"Peak time: around {peak['time']}. People: {peak['people']}, risk: {peak['risk']}%.", "source": "fallback"}
+        return {"reply": "Peak vaqtni hisoblash uchun hali yetarli analytics ma’lumot yo‘q." if uz else "Not enough analytics data to calculate peak time yet.", "source": "fallback"}
 
-    if "highest risk" in message or "risk camera" in message or "most risky" in message:
-        if not camera_data:
-            return {"reply": "No cameras are currently configured."}
-        highest = max(camera_data, key=lambda x: x.get("risk_score", 0))
-        return {
-            "reply": (
-                f"The highest risk camera is {highest.get('site', 'Unknown')} "
-                f"({highest.get('camera_id', '-')}) with a risk score of "
-                f"{highest.get('risk_score', 0)}%."
-            )
-        }
-
-    if "busiest" in message or "most people" in message or "crowded" in message:
-        if not camera_data:
-            return {"reply": "No cameras are currently configured."}
-        busiest = max(camera_data, key=lambda x: x.get("active_people", 0))
-        return {
-            "reply": (
-                f"The busiest camera is {busiest.get('site', 'Unknown')} "
-                f"({busiest.get('camera_id', '-')}) with "
-                f"{busiest.get('active_people', 0)} active people."
-            )
-        }
-
-    if "offline" in message or "online" in message or "camera status" in message:
-        total = len(camera_data)
-        online = len([c for c in camera_data if c.get("running")])
-        offline = total - online
-        return {"reply": f"Camera status: {online} online, {offline} offline, {total} total configured cameras."}
-
-    if "summary" in message or "overview" in message or "security report" in message:
-        return {
-            "reply": (
-                f"Security summary: {kpis.get('active_people', 0)} active people, "
-                f"{kpis.get('total_unique', 0)} total unique people, "
-                f"{kpis.get('risk_score', 0)}% risk score, "
-                f"{kpis.get('incidents', 0)} incidents, "
-                f"{kpis.get('laptops', 0)} laptops, "
-                f"{kpis.get('phones', 0)} phones, "
-                f"{kpis.get('vehicles', 0)} vehicles and "
-                f"{kpis.get('objects', 0)} objects detected."
-            )
-        }
-
-    if "incident" in message or "alert" in message or "anomaly" in message:
+    if text_has_any(message, ["incident", "alert", "anomaly", "hodisa", "xabar", "ogohlantirish", "anomaliya"]):
         if df_incidents.empty:
-            return {"reply": "No incidents are currently recorded in the database."}
-
+            return {"reply": "Hozir database’da incident yo‘q." if uz else "No incidents are currently recorded in the database.", "source": "fallback"}
         high = len(df_incidents[df_incidents["severity"] == "HIGH"]) if "severity" in df_incidents.columns else 0
         medium = len(df_incidents[df_incidents["severity"] == "MEDIUM"]) if "severity" in df_incidents.columns else 0
         low = len(df_incidents) - high - medium
+        return {"reply": f"Jami {len(df_incidents)} incident bor. High: {high}, medium: {medium}, low/other: {low}." if uz else f"There are {len(df_incidents)} incidents recorded. High: {high}, medium: {medium}, low/other: {low}.", "source": "fallback"}
 
-        return {"reply": f"There are {len(df_incidents)} incidents recorded. High severity: {high}, medium severity: {medium}, low/other: {low}."}
-
-    if "people" in message or "person" in message or "occupancy" in message:
-        return {"reply": f"There are currently {kpis.get('active_people', 0)} active people. Total unique people recorded: {kpis.get('total_unique', 0)}."}
-
-    if "risk" in message:
+    if text_has_any(message, ["risk", "xavf"]):
         risk = safe_int(kpis.get("risk_score", 0))
         if risk >= 70:
-            level = "high"
-            action = "Immediate monitoring is recommended."
+            level = "yuqori" if uz else "high"
+            action = "Darhol monitoring qilish kerak." if uz else "Immediate monitoring is recommended."
         elif risk >= 35:
-            level = "medium"
-            action = "Continue close monitoring."
+            level = "o‘rtacha" if uz else "medium"
+            action = "Yaqindan kuzatishda davom eting." if uz else "Continue close monitoring."
         else:
-            level = "low"
-            action = "Normal monitoring is enough."
-        return {"reply": f"Current risk score is {risk}%, which is {level}. {action}"}
+            level = "past" if uz else "low"
+            action = "Oddiy monitoring yetarli." if uz else "Normal monitoring is enough."
+        return {"reply": f"Hozirgi risk {risk}%, daraja {level}. {action}" if uz else f"Current risk score is {risk}%, which is {level}. {action}", "source": "fallback"}
 
-    if "laptop" in message:
-        return {"reply": f"{kpis.get('laptops', 0)} laptops are currently detected."}
-    if "phone" in message:
-        return {"reply": f"{kpis.get('phones', 0)} phones are currently detected."}
-    if "vehicle" in message or "car" in message:
-        return {"reply": f"{kpis.get('vehicles', 0)} vehicles are currently detected."}
-    if "object" in message:
-        return {"reply": f"{kpis.get('objects', 0)} objects are currently detected."}
-    if "standing" in message or "sitting" in message or "posture" in message:
-        return {"reply": "Standing and sitting analytics are disabled because they were not reliable for the current camera angle. Live people count is based on detected person boxes."}
-    if "trend" in message or "analytics" in message:
+    object_queries = [
+        (["laptop", "noutbuk"], "laptops", "noutbuk", "laptops"),
+        (["phone", "telefon"], "phones", "telefon", "phones"),
+        (["vehicle", "car", "mashina", "transport"], "vehicles", "transport", "vehicles"),
+        (["object", "obyekt", "obj"], "objects", "obyekt", "objects"),
+    ]
+    for words, key, uz_name, en_name in object_queries:
+        if text_has_any(message, words):
+            return {"reply": f"Hozir {kpis.get(key, 0)} ta {uz_name} aniqlangan." if uz else f"{kpis.get(key, 0)} {en_name} are currently detected.", "source": "fallback"}
+
+    if text_has_any(message, ["fps", "quality", "sifat", "stream"]):
+        return {"reply": f"Hozir o‘rtacha FPS {safe_float(kpis.get('fps', 0)):.1f}, stream sifati {safe_int(kpis.get('quality', 0))}%." if uz else f"Average FPS is {safe_float(kpis.get('fps', 0)):.1f}, stream quality is {safe_int(kpis.get('quality', 0))}%.", "source": "fallback"}
+
+    if text_has_any(message, ["standing", "sitting", "posture", "turib", "o'tirib", "otirib"]):
+        return {"reply": "Standing/sitting analytics hozir o‘chirilgan, chunki bu kamera burchagida ishonchli emas. Live odam soni person boxlar orqali olinadi." if uz else "Standing and sitting analytics are disabled because they were not reliable for the current camera angle. Live people count is based on detected person boxes.", "source": "fallback"}
+
+    if text_has_any(message, ["trend", "analytics", "statistika"]):
         if df_analytics.empty:
-            return {"reply": "No analytics data is available yet."}
-        return {"reply": f"Analytics database contains {len(df_analytics)} records. Latest active people: {kpis.get('active_people', 0)}, latest risk score: {kpis.get('risk_score', 0)}%."}
+            return {"reply": "Hali analytics data yo‘q." if uz else "No analytics data is available yet.", "source": "fallback"}
+        return {"reply": f"Analytics bazada {len(df_analytics)} yozuv bor. Oxirgi live odam: {kpis.get('active_people', 0)}, risk: {kpis.get('risk_score', 0)}%." if uz else f"Analytics database contains {len(df_analytics)} records. Latest active people: {kpis.get('active_people', 0)}, latest risk score: {kpis.get('risk_score', 0)}%.", "source": "fallback"}
 
     return {
         "reply": (
-            "I can answer questions such as: highest risk camera, busiest camera, "
-            "security summary, incidents, people count, laptops, phones, vehicles, "
-            "objects, camera status and analytics trend."
-        )
+            "Men kamera bo‘yicha live odamlar, qaysi kamerada nechta odam borligi, eng yuqori risk, eng gavjum kamera, FPS/sifat, obyektlar, incidentlar va umumiy holatga javob bera olaman. Masalan: ‘hozir qaysi kamerada qancha odam bor?’"
+            if uz else
+            "I can answer questions about live people by camera, highest risk, busiest camera, FPS/quality, objects, incidents and summaries. Try: ‘how many people are live in each camera?’"
+        ),
+        "source": "fallback",
     }

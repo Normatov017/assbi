@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 
 import LoginScreen from "./components/LoginScreen";
@@ -6,17 +6,25 @@ import DashboardLayout from "./components/DashboardLayout";
 import { API_BASE } from "./lib/config";
 import { useI18n } from "./lib/i18n";
 
-import DashboardOverview from "./components/pages/DashboardOverview";
-import LiveSurveillance from "./components/pages/LiveSurveillance";
-import CrowdAnalytics from "./components/pages/CrowdAnalytics";
-import ObjectDetection from "./components/pages/ObjectDetection";
-import FineTuning from "./components/pages/FineTuning";
-import AnomalyDetection from "./components/pages/AnomalyDetection";
-import PredictiveAnalytics from "./components/pages/PredictiveAnalytics";
-import Reports from "./components/pages/Reports";
-import GovernanceEvaluation from "./components/pages/GovernanceEvaluation";
-import AIChatbot from "./components/pages/AIChatbot";
-import Settings from "./components/pages/Settings";
+const DashboardOverview = lazy(() => import("./components/pages/DashboardOverview"));
+const LiveSurveillance = lazy(() => import("./components/pages/LiveSurveillance"));
+const CrowdAnalytics = lazy(() => import("./components/pages/CrowdAnalytics"));
+const ObjectDetection = lazy(() => import("./components/pages/ObjectDetection"));
+const FineTuning = lazy(() => import("./components/pages/FineTuning"));
+const AnomalyDetection = lazy(() => import("./components/pages/AnomalyDetection"));
+const PredictiveAnalytics = lazy(() => import("./components/pages/PredictiveAnalytics"));
+const Reports = lazy(() => import("./components/pages/Reports"));
+const GovernanceEvaluation = lazy(() => import("./components/pages/GovernanceEvaluation"));
+const AIChatbot = lazy(() => import("./components/pages/AIChatbot"));
+const Settings = lazy(() => import("./components/pages/Settings"));
+
+function PageLoading() {
+  return (
+    <div className="min-h-[420px] w-full bg-background text-foreground flex items-center justify-center">
+      <div className="text-sm text-muted-foreground">Yuklanmoqda...</div>
+    </div>
+  );
+}
 
 export default function App() {
   const { t } = useI18n();
@@ -109,57 +117,57 @@ export default function App() {
           >
             <Route
               index
-              element={<DashboardOverview />}
+              element={<Suspense fallback={<PageLoading />}><DashboardOverview /></Suspense>}
             />
 
             <Route
               path="surveillance"
-              element={<LiveSurveillance />}
+              element={<Suspense fallback={<PageLoading />}><LiveSurveillance /></Suspense>}
             />
 
             <Route
               path="crowd"
-              element={<CrowdAnalytics />}
+              element={<Suspense fallback={<PageLoading />}><CrowdAnalytics /></Suspense>}
             />
 
             <Route
               path="objects"
-              element={<ObjectDetection />}
+              element={<Suspense fallback={<PageLoading />}><ObjectDetection /></Suspense>}
             />
 
             <Route
               path="fine-tuning"
-              element={<FineTuning />}
+              element={<Suspense fallback={<PageLoading />}><FineTuning /></Suspense>}
             />
 
             <Route
               path="anomalies"
-              element={<AnomalyDetection />}
+              element={<Suspense fallback={<PageLoading />}><AnomalyDetection /></Suspense>}
             />
 
             <Route
               path="predictive"
-              element={<PredictiveAnalytics />}
+              element={<Suspense fallback={<PageLoading />}><PredictiveAnalytics /></Suspense>}
             />
 
             <Route
               path="reports"
-              element={<Reports />}
+              element={<Suspense fallback={<PageLoading />}><Reports /></Suspense>}
             />
 
             <Route
               path="evaluation"
-              element={<GovernanceEvaluation />}
+              element={<Suspense fallback={<PageLoading />}><GovernanceEvaluation /></Suspense>}
             />
 
             <Route
               path="chatbot"
-              element={<AIChatbot />}
+              element={<Suspense fallback={<PageLoading />}><AIChatbot /></Suspense>}
             />
 
             <Route
               path="settings"
-              element={<Settings />}
+              element={<Suspense fallback={<PageLoading />}><Settings /></Suspense>}
             />
           </Route>
 

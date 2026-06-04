@@ -163,6 +163,33 @@ export default function FineTuning() {
         <div className="rounded-md border bg-card px-4 py-3 text-sm text-muted-foreground">{message}</div>
       ) : null}
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Zap className="size-4 text-blue-600" />
+            Fine-tuning qanday ishlaydi
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-4">
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="font-medium text-foreground">1. Model tayyorlash</p>
+            <p className="mt-1">YOLO trainingdan chiqqan <span className="font-mono">best.pt</span> model sizning custom/fine-tuned modelingiz bo‘ladi.</p>
+          </div>
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="font-medium text-foreground">2. Upload/select</p>
+            <p className="mt-1">Shu sahifada <span className="font-mono">best.pt</span> ni yuklang yoki ro‘yxatdan aktiv model qilib tanlang.</p>
+          </div>
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="font-medium text-foreground">3. Test image</p>
+            <p className="mt-1">Rasm yuklab, model odam/obyektlarni qanday topayotganini live kameraga ulashdan oldin tekshiring.</p>
+          </div>
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="font-medium text-foreground">4. Live detection</p>
+            <p className="mt-1">Aktiv model kamera detector restart bo‘lganda RTSP/YouTube/MP4 detectionda ishlatiladi.</p>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
