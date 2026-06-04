@@ -47,6 +47,20 @@ type TrainingStatus = {
   updated_at?: string;
 };
 
+type CollectionStatus = {
+  running: boolean;
+  state: string;
+  message: string;
+  source?: string;
+  target_count?: number;
+  saved_count?: number;
+  images_dir?: string;
+  zip_ready?: boolean;
+  log_file?: string;
+  log_tail?: string;
+  updated_at?: string;
+};
+
 type FineTuneStatus = {
   ok: boolean;
   current_model: string;
@@ -54,6 +68,7 @@ type FineTuneStatus = {
   models: DetectionModel[];
   training_dir: string;
   dataset?: DatasetStatus;
+  collection?: CollectionStatus;
   training?: TrainingStatus;
 };
 
@@ -73,8 +88,13 @@ export default function FineTuning() {
   const [testingImage, setTestingImage] = useState(false);
   const [testResult, setTestResult] = useState<TestImageResult | null>(null);
   const [training, setTraining] = useState<TrainingStatus | null>(null);
+  const [collection, setCollection] = useState<CollectionStatus | null>(null);
   const [uploadingDataset, setUploadingDataset] = useState(false);
+  const [startingCollection, setStartingCollection] = useState(false);
   const [startingTraining, setStartingTraining] = useState(false);
+  const [collectionSource, setCollectionSource] = useState("");
+  const [collectionCount, setCollectionCount] = useState(500);
+  const [collectionInterval, setCollectionInterval] = useState(1);
   const [trainModel, setTrainModel] = useState("yolo11m.pt");
   const [trainEpochs, setTrainEpochs] = useState(80);
   const [trainBatch, setTrainBatch] = useState(8);
@@ -95,6 +115,7 @@ export default function FineTuning() {
       if (!res.ok) throw new Error(data?.message || "Fine-tuning status API error");
       setStatus(data);
       if (data.training) setTraining(data.training);
+      if (data.collection) setCollection(data.collection);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Fine-tuning status yuklanmadi.");
     } finally {
@@ -194,6 +215,50 @@ export default function FineTuning() {
     window.open(`${API}/api/fine-tuning/model/best`, "_blank");
   }
 
+  function downloadCollectedImages() {
+    window.open(`${API}/api/fine-tuning/collect/download`, "_blank");
+  }
+
+  async function loadCollectionStatus() {
+    try {
+      const res = await fetch(`${API}/api/fine-tuning/collect/status`, { cache: "no-store", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Collection status API error");
+      setCollection(data);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Rasm yig'ish statusi yuklanmadi.");
+    }
+  }
+
+  async function startCollection() {
+    if (!collectionSource.trim()) {
+      setMessage("YouTube/RTSP/API frame link kiriting.");
+      return;
+    }
+    try {
+      setStartingCollection(true);
+      const res = await fetch(`${API}/api/fine-tuning/collect`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: collectionSource.trim(),
+          count: collectionCount,
+          interval: collectionInterval,
+          prefix: "assbi",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data?.message || "Rasm yig'ish boshlanmadi.");
+      setCollection(data);
+      setMessage(`${collectionCount} ta image yig'ish boshlandi. Tugaganda raw images ZIPni yuklab Roboflowga berasiz.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Rasm yig'ish xatosi.");
+    } finally {
+      setStartingCollection(false);
+    }
+  }
+
   async function startTraining() {
     try {
       setStartingTraining(true);
@@ -263,7 +328,16 @@ export default function FineTuning() {
     return () => window.clearInterval(timer);
   }, [training?.running]);
 
+  useEffect(() => {
+    if (!collection?.running) return;
+    const timer = window.setInterval(() => {
+      loadCollectionStatus();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [collection?.running]);
+
   const dataset = status?.dataset;
+  const collectionState = collection || status?.collection;
   const trainingState = training || status?.training;
   const trainingProgress = trainingState?.state === "completed" ? 100 : trainingState?.running ? 65 : trainingState?.state === "failed" ? 15 : 0;
 
@@ -347,6 +421,43 @@ export default function FineTuning() {
               <p className="mt-1 font-medium">{trainingState?.running ? "Training ishlayapti" : trainingState?.state || "idle"}</p>
               <p className="mt-1 text-xs text-muted-foreground">{trainingState?.updated_at || "-"}</p>
             </div>
+          </div>
+
+          <div className="rounded-md border bg-muted/20 p-3">
+            <div className="grid gap-3 lg:grid-cols-[1fr_140px_140px_auto] lg:items-end">
+              <div className="space-y-2">
+                <p className="font-medium">1-qadam: linkdan raw rasmlar yig'ish</p>
+                <Input value={collectionSource} onChange={(event) => setCollectionSource(event.target.value)} placeholder="YouTube, RTSP yoki https://normatov.uz/api/frame/CAMERA_ID" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Count</p>
+                <Input type="number" min={1} max={2000} value={collectionCount} onChange={(event) => setCollectionCount(Number(event.target.value))} />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Interval</p>
+                <Input type="number" min={0.1} max={10} step={0.1} value={collectionInterval} onChange={(event) => setCollectionInterval(Number(event.target.value))} />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={loadCollectionStatus}>
+                  <RefreshCw className="mr-2 size-4" />
+                  Status
+                </Button>
+                <Button onClick={startCollection} disabled={startingCollection || Boolean(collectionState?.running)}>
+                  <ImageUp className="mr-2 size-4" />
+                  Yig'ish
+                </Button>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-col gap-2 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
+              <p>{collectionState?.message || "Raw images ZIP Roboflowga upload qilish uchun kerak bo'ladi."} Saved: {collectionState?.saved_count || 0}/{collectionState?.target_count || collectionCount}</p>
+              <Button variant="outline" size="sm" onClick={downloadCollectedImages} disabled={!collectionState?.zip_ready}>
+                <Download className="mr-2 size-4" />
+                Raw images ZIP
+              </Button>
+            </div>
+            {collectionState?.log_tail ? (
+              <pre className="mt-3 max-h-28 overflow-auto rounded bg-black p-2 text-xs text-green-200">{collectionState.log_tail}</pre>
+            ) : null}
           </div>
 
           <div className="rounded-md border bg-muted/20 p-3">

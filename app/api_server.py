@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -53,6 +54,10 @@ TRAINING_DIR = BASE_DIR / "training"
 CUSTOM_DATASET_DIR = BASE_DIR / "datasets" / "custom_assbi_yolo"
 TRAINING_STATUS_FILE = TRAINING_DIR / "ui_training_status.json"
 TRAINING_LOG_FILE = LOGS_DIR / "fine_tuning_train.log"
+COLLECTION_DIR = BASE_DIR / "datasets" / "raw" / "ui_collection"
+COLLECTION_IMAGES_DIR = COLLECTION_DIR / "images"
+COLLECTION_STATUS_FILE = TRAINING_DIR / "ui_collection_status.json"
+COLLECTION_LOG_FILE = LOGS_DIR / "fine_tuning_collect.log"
 TEST_OUTPUT_DIR = EXPORTS_DIR / "fine_tuning_tests"
 FRAME_STALE_SECONDS = 30
 
@@ -79,6 +84,7 @@ RUNNING_PROCESSES: dict[str, Any] = {}
 LAST_INGEST_FRAME_AT: dict[str, float] = {}
 LAST_INGEST_ANALYTICS_AT: dict[str, float] = {}
 FINE_TUNING_TRAIN_PROCESS: Optional[subprocess.Popen] = None
+FINE_TUNING_COLLECT_PROCESS: Optional[subprocess.Popen] = None
 
 DEFAULT_SETTINGS = {
     "max_people": 50,
@@ -133,6 +139,13 @@ class TrainingStartPayload(BaseModel):
     imgsz: int = 640
     batch: int = 8
     name: str = "assbi_custom_person_vehicle_object"
+
+
+class ImageCollectionPayload(BaseModel):
+    source: str
+    count: int = 500
+    interval: float = 1.0
+    prefix: str = "assbi"
 
 
 DEFAULT_USERS = {
@@ -555,6 +568,63 @@ def tail_file(path: Path, max_lines: int = 80) -> str:
         return ""
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     return "\n".join(lines[-max_lines:])
+
+
+def collection_image_count() -> int:
+    if not COLLECTION_IMAGES_DIR.exists():
+        return 0
+    return len([p for p in COLLECTION_IMAGES_DIR.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}])
+
+
+def load_collection_status() -> dict[str, Any]:
+    return load_json_file(
+        COLLECTION_STATUS_FILE,
+        {
+            "running": False,
+            "state": "idle",
+            "message": "Rasm yig'ish hali boshlanmagan.",
+            "source": "",
+            "target_count": 500,
+            "saved_count": collection_image_count(),
+            "images_dir": str(COLLECTION_IMAGES_DIR),
+            "zip_ready": collection_image_count() > 0,
+            "log_file": str(COLLECTION_LOG_FILE),
+        },
+    )
+
+
+def save_collection_status(payload: dict[str, Any]) -> dict[str, Any]:
+    current = load_collection_status()
+    current.update(payload)
+    current["saved_count"] = collection_image_count()
+    current["zip_ready"] = current["saved_count"] > 0
+    current["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_json_file(COLLECTION_STATUS_FILE, current)
+    return current
+
+
+def refresh_collection_process_status() -> dict[str, Any]:
+    global FINE_TUNING_COLLECT_PROCESS
+    status = load_collection_status()
+    status["saved_count"] = collection_image_count()
+    status["zip_ready"] = status["saved_count"] > 0
+    proc = FINE_TUNING_COLLECT_PROCESS
+    if proc and proc.poll() is None:
+        status.update({"running": True, "state": "running"})
+        return status
+    if proc and proc.poll() is not None:
+        code = proc.returncode
+        FINE_TUNING_COLLECT_PROCESS = None
+        saved = collection_image_count()
+        status = save_collection_status(
+            {
+                "running": False,
+                "state": "completed" if code == 0 and saved > 0 else "failed",
+                "return_code": code,
+                "message": f"Rasm yig'ish tugadi: {saved} ta image." if code == 0 and saved > 0 else "Rasm yig'ish tugadi, lekin image topilmadi. Logni tekshiring.",
+            }
+        )
+    return status
 
 
 def draw_test_detection(frame, detections):
@@ -1869,6 +1939,7 @@ def fine_tuning_status():
         "models": available_detection_models(),
         "training_dir": str(TRAINING_DIR),
         "dataset": yolo_dataset_status(),
+        "collection": refresh_collection_process_status(),
         "training": refresh_training_process_status(),
     }
 
@@ -1897,6 +1968,96 @@ def download_fine_tuning_dataset_template():
         filename="assbi_yolo_dataset_template.zip",
         media_type="application/zip",
     )
+
+
+@app.get("/api/fine-tuning/collect/status")
+def fine_tuning_collect_status():
+    status = refresh_collection_process_status()
+    return {"ok": True, **status, "log_tail": tail_file(COLLECTION_LOG_FILE)}
+
+
+@app.post("/api/fine-tuning/collect")
+def start_fine_tuning_collection(payload: ImageCollectionPayload, request: Request):
+    global FINE_TUNING_COLLECT_PROCESS
+    refresh_collection_process_status()
+    if FINE_TUNING_COLLECT_PROCESS and FINE_TUNING_COLLECT_PROCESS.poll() is None:
+        return JSONResponse({"ok": False, "message": "Rasm yig'ish allaqachon ishlayapti."}, status_code=409)
+
+    source = str(payload.source or "").strip()
+    if not source:
+        return JSONResponse({"ok": False, "message": "Source link kiriting."}, status_code=400)
+
+    count = max(1, min(int(payload.count), 2000))
+    interval = max(0.1, min(float(payload.interval), 10.0))
+    prefix = normalize_camera_id(payload.prefix or "assbi")
+
+    if COLLECTION_DIR.exists():
+        shutil.rmtree(COLLECTION_DIR)
+    COLLECTION_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    COLLECTION_LOG_FILE.write_text("", encoding="utf-8")
+
+    cmd = [
+        sys.executable,
+        str(BASE_DIR / "scripts" / "collect_images.py"),
+        "--source",
+        source,
+        "--count",
+        str(count),
+        "--interval",
+        str(interval),
+        "--output",
+        str(COLLECTION_IMAGES_DIR),
+        "--prefix",
+        prefix,
+    ]
+    log_handle = COLLECTION_LOG_FILE.open("a", encoding="utf-8")
+    log_handle.write("Running: " + " ".join(cmd) + "\n")
+    log_handle.flush()
+    try:
+        FINE_TUNING_COLLECT_PROCESS = subprocess.Popen(
+            cmd,
+            cwd=str(BASE_DIR),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except Exception as exc:
+        log_handle.close()
+        return JSONResponse({"ok": False, "message": f"Rasm yig'ish boshlanmadi: {exc}"}, status_code=500)
+
+    status = save_collection_status(
+        {
+            "running": True,
+            "state": "running",
+            "message": f"{count} ta image yig'ish boshlandi.",
+            "source": source,
+            "target_count": count,
+            "interval": interval,
+            "prefix": prefix,
+            "images_dir": str(COLLECTION_IMAGES_DIR),
+            "log_file": str(COLLECTION_LOG_FILE),
+        }
+    )
+    audit_event(request, "fine_tuning.collect_start", f"count={count}; source={source}")
+    return {"ok": True, **status}
+
+
+@app.get("/api/fine-tuning/collect/download")
+def download_collected_images_zip():
+    if collection_image_count() <= 0:
+        return JSONResponse({"ok": False, "message": "Hali yig'ilgan image yo'q."}, status_code=404)
+    zip_path = EXPORTS_DIR / "assbi_collected_images.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for image_path in sorted(COLLECTION_IMAGES_DIR.glob("*")):
+            if image_path.is_file() and image_path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
+                archive.write(image_path, f"images/{image_path.name}")
+        metadata = COLLECTION_DIR / "metadata.jsonl"
+        manifest = COLLECTION_DIR / "collection_manifest.json"
+        if metadata.exists():
+            archive.write(metadata, "metadata.jsonl")
+        if manifest.exists():
+            archive.write(manifest, "collection_manifest.json")
+    return FileResponse(zip_path, filename="assbi_collected_images.zip", media_type="application/zip")
 
 
 @app.post("/api/fine-tuning/dataset/upload")
