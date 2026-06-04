@@ -2798,12 +2798,35 @@ def cleanup_demo_data():
 def ai_chat(req: ChatRequest):
     original_message = req.message.strip()
     message = original_message.lower()
-    summary_data = build_summary()
-    kpis = summary_data.get("kpis", {})
     camera_data = build_cameras_response()
-    df_analytics = read_table("minute_analytics")
-    df_incidents = read_table("incidents")
+    summary_data: Optional[dict[str, Any]] = None
+    kpis: Optional[dict[str, Any]] = None
+    df_analytics: Optional[pd.DataFrame] = None
+    df_incidents: Optional[pd.DataFrame] = None
     uz = wants_uzbek(message)
+
+    def get_summary_data() -> dict[str, Any]:
+        nonlocal summary_data, kpis
+        if summary_data is None:
+            summary_data = build_summary()
+            kpis = summary_data.get("kpis", {})
+        return summary_data
+
+    def get_kpis() -> dict[str, Any]:
+        get_summary_data()
+        return kpis or {}
+
+    def get_analytics_df() -> pd.DataFrame:
+        nonlocal df_analytics
+        if df_analytics is None:
+            df_analytics = read_table("minute_analytics")
+        return df_analytics
+
+    def get_incidents_df() -> pd.DataFrame:
+        nonlocal df_incidents
+        if df_incidents is None:
+            df_incidents = read_table("incidents")
+        return df_incidents
 
     if not message:
         return {"reply": "Kamera, odamlar, risk, incident yoki analytics haqida savol yozing." if uz else "Please ask something about people, risk, cameras, incidents, objects or analytics.", "source": "fallback"}
@@ -2820,7 +2843,7 @@ def ai_chat(req: ChatRequest):
     if not should_answer_locally:
         ai_reply = ask_openai_assistant(
             original_message,
-            build_chat_context(summary_data, camera_data, df_analytics, df_incidents),
+            build_chat_context(get_summary_data(), camera_data, get_analytics_df(), get_incidents_df()),
         )
         if ai_reply:
             return {"reply": ai_reply, "source": "openai"}
@@ -2841,7 +2864,7 @@ def ai_chat(req: ChatRequest):
     if text_has_any(message, live_people_words) and (text_has_any(message, camera_words) or text_has_any(message, ["qancha", "count", "soni"])):
         return {"reply": format_live_people_by_camera(camera_data, uz), "source": "fallback"}
 
-    if text_has_any(message, ["highest risk", "risk camera", "most risky", "eng yuqori risk", "eng xavf", "xavfli", "risk baland", "yuqori risk"]):
+    if text_has_any(message, ["highest risk", "risk camera", "most risky", "eng yuqori risk", "eng xavf", "xavfli", "risk baland", "risk eng baland", "eng baland", "yuqori risk"]):
         return {"reply": format_highest_risk(camera_data, uz), "source": "fallback"}
 
     if text_has_any(message, ["busiest", "most people", "crowded", "eng gavjum", "eng ko'p odam", "eng kop odam", "odam eng ko'p", "odam eng kop"]):
@@ -2851,6 +2874,7 @@ def ai_chat(req: ChatRequest):
         return {"reply": format_camera_status(camera_data, uz), "source": "fallback"}
 
     if text_has_any(message, ["summary", "overview", "security report", "xulosa", "umumiy", "holat", "hisobot"]):
+        kpis = get_kpis()
         if uz:
             reply = (
                 f"Umumiy holat: {kpis.get('active_people', 0)} live odam, "
@@ -2869,20 +2893,22 @@ def ai_chat(req: ChatRequest):
         return {"reply": reply, "source": "fallback"}
 
     if text_has_any(message, ["peak", "pik", "eng ko'p", "eng kop", "qaysi vaqt", "vaqt"]):
-        peak = find_peak_period(df_analytics)
+        peak = find_peak_period(get_analytics_df())
         if peak:
             return {"reply": f"Eng gavjum vaqt: {peak['time']} atrofida. Shu paytda {peak['people']} odam bo‘lgan, risk {peak['risk']}%." if uz else f"Peak time: around {peak['time']}. People: {peak['people']}, risk: {peak['risk']}%.", "source": "fallback"}
         return {"reply": "Peak vaqtni hisoblash uchun hali yetarli analytics ma’lumot yo‘q." if uz else "Not enough analytics data to calculate peak time yet.", "source": "fallback"}
 
     if text_has_any(message, ["incident", "alert", "anomaly", "hodisa", "xabar", "ogohlantirish", "anomaliya"]):
-        if df_incidents.empty:
+        incidents_df = get_incidents_df()
+        if incidents_df.empty:
             return {"reply": "Hozir database’da incident yo‘q." if uz else "No incidents are currently recorded in the database.", "source": "fallback"}
-        high = len(df_incidents[df_incidents["severity"] == "HIGH"]) if "severity" in df_incidents.columns else 0
-        medium = len(df_incidents[df_incidents["severity"] == "MEDIUM"]) if "severity" in df_incidents.columns else 0
-        low = len(df_incidents) - high - medium
-        return {"reply": f"Jami {len(df_incidents)} incident bor. High: {high}, medium: {medium}, low/other: {low}." if uz else f"There are {len(df_incidents)} incidents recorded. High: {high}, medium: {medium}, low/other: {low}.", "source": "fallback"}
+        high = len(incidents_df[incidents_df["severity"] == "HIGH"]) if "severity" in incidents_df.columns else 0
+        medium = len(incidents_df[incidents_df["severity"] == "MEDIUM"]) if "severity" in incidents_df.columns else 0
+        low = len(incidents_df) - high - medium
+        return {"reply": f"Jami {len(incidents_df)} incident bor. High: {high}, medium: {medium}, low/other: {low}." if uz else f"There are {len(incidents_df)} incidents recorded. High: {high}, medium: {medium}, low/other: {low}.", "source": "fallback"}
 
     if text_has_any(message, ["risk", "xavf"]):
+        kpis = get_kpis()
         risk = safe_int(kpis.get("risk_score", 0))
         if risk >= 70:
             level = "yuqori" if uz else "high"
@@ -2901,6 +2927,7 @@ def ai_chat(req: ChatRequest):
         (["vehicle", "car", "mashina", "transport"], "vehicles", "transport", "vehicles"),
         (["object", "obyekt", "obj"], "objects", "obyekt", "objects"),
     ]
+    kpis = get_kpis()
     for words, key, uz_name, en_name in object_queries:
         if text_has_any(message, words):
             return {"reply": f"Hozir {kpis.get(key, 0)} ta {uz_name} aniqlangan." if uz else f"{kpis.get(key, 0)} {en_name} are currently detected.", "source": "fallback"}
@@ -2912,9 +2939,11 @@ def ai_chat(req: ChatRequest):
         return {"reply": "Standing/sitting analytics hozir o‘chirilgan, chunki bu kamera burchagida ishonchli emas. Live odam soni person boxlar orqali olinadi." if uz else "Standing and sitting analytics are disabled because they were not reliable for the current camera angle. Live people count is based on detected person boxes.", "source": "fallback"}
 
     if text_has_any(message, ["trend", "analytics", "statistika"]):
-        if df_analytics.empty:
+        analytics_df = get_analytics_df()
+        kpis = get_kpis()
+        if analytics_df.empty:
             return {"reply": "Hali analytics data yo‘q." if uz else "No analytics data is available yet.", "source": "fallback"}
-        return {"reply": f"Analytics bazada {len(df_analytics)} yozuv bor. Oxirgi live odam: {kpis.get('active_people', 0)}, risk: {kpis.get('risk_score', 0)}%." if uz else f"Analytics database contains {len(df_analytics)} records. Latest active people: {kpis.get('active_people', 0)}, latest risk score: {kpis.get('risk_score', 0)}%.", "source": "fallback"}
+        return {"reply": f"Analytics bazada {len(analytics_df)} yozuv bor. Oxirgi live odam: {kpis.get('active_people', 0)}, risk: {kpis.get('risk_score', 0)}%." if uz else f"Analytics database contains {len(analytics_df)} records. Latest active people: {kpis.get('active_people', 0)}, latest risk score: {kpis.get('risk_score', 0)}%.", "source": "fallback"}
 
     return {
         "reply": (
