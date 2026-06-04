@@ -126,11 +126,12 @@ def start_camera(camera, api_url, env):
     url = str(camera.get("url") or "").strip()
     cam_type = str(camera.get("type") or "relay").strip() or "relay"
     is_rtsp = url.lower().startswith("rtsp://")
-    grabber_interval = "0.05" if is_rtsp else "0.08"
-    grabber_width = "960" if is_rtsp else "640"
-    grabber_height = "540" if is_rtsp else "360"
-    relay_interval = "0.08" if is_rtsp else "0.12"
-    detect_every = "8" if is_rtsp else "12"
+    grabber_interval = "0.08"
+    grabber_width = "640"
+    grabber_height = "360"
+    relay_interval = "0.12" if is_rtsp else "0.12"
+    detect_every = "6" if is_rtsp else "12"
+    detector_imgsz = "512" if is_rtsp else "640"
 
     cleanup_stale_files(camera_id)
 
@@ -159,7 +160,7 @@ def start_camera(camera, api_url, env):
         "--height",
         "360",
         "--imgsz",
-        "640",
+        detector_imgsz,
         "--detect-every",
         detect_every,
         "--log-every",
@@ -185,7 +186,9 @@ def start_camera(camera, api_url, env):
         grabber_interval,
     ]
     if is_rtsp:
-        grabber_cmd.extend(["--crop-top-ratio", "0.20"])
+        detector_cmd.extend(["--fast-mode", "--crop-top-ratio", "0.20"])
+    else:
+        grabber_cmd.extend([])
 
     relay_cmd = [
         sys.executable,
@@ -206,9 +209,10 @@ def start_camera(camera, api_url, env):
 
     procs = [
         subprocess.Popen(detector_cmd, cwd=str(BASE_DIR), env=env, stdout=detector_log, stderr=detector_log),
-        subprocess.Popen(grabber_cmd, cwd=str(BASE_DIR), env=env, stdout=grabber_log, stderr=grabber_log),
         subprocess.Popen(relay_cmd, cwd=str(BASE_DIR), env=env, stdout=relay_log, stderr=relay_log),
     ]
+    if not is_rtsp:
+        procs.insert(1, subprocess.Popen(grabber_cmd, cwd=str(BASE_DIR), env=env, stdout=grabber_log, stderr=grabber_log))
 
     print(f"[ASSBI auto relay] started {camera_id}: {url}", flush=True)
     return ManagedCamera(camera_key(camera), procs, [detector_log, grabber_log, relay_log])

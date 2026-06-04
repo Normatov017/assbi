@@ -202,7 +202,7 @@ def save_latest_frame(frame, camera_id):
     final_path = FRAMES_DIR / f"{camera_id}.jpg"
     temp_path = FRAMES_DIR / f"{camera_id}_{os.getpid()}_tmp.jpg"
 
-    ok = cv2.imwrite(str(temp_path), frame)
+    ok = cv2.imwrite(str(temp_path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 78])
 
     if ok:
         temp_path.replace(final_path)

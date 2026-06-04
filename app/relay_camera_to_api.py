@@ -70,9 +70,20 @@ def main():
 
     endpoint = args.api_url.rstrip("/") + "/api/ingest/frame"
     frame_path = FRAMES_DIR / f"{args.camera_id}.jpg"
+    last_uploaded_mtime = 0.0
     while True:
         row = latest_row(args.camera_id)
         if not row or not frame_path.exists():
+            time.sleep(args.interval)
+            continue
+
+        try:
+            current_mtime = frame_path.stat().st_mtime
+        except OSError:
+            time.sleep(args.interval)
+            continue
+
+        if current_mtime <= last_uploaded_mtime:
             time.sleep(args.interval)
             continue
 
@@ -100,6 +111,7 @@ def main():
                     timeout=3,
                 )
             response.raise_for_status()
+            last_uploaded_mtime = current_mtime
             print(f"[ASSBI relay] uploaded {args.camera_id} {timestamp}", flush=True)
         except Exception as exc:
             print(f"[ASSBI relay] upload failed: {exc}", flush=True)
