@@ -2100,9 +2100,12 @@ async def upload_fine_tuning_dataset(request: Request, dataset: UploadFile = Fil
         if source_root is None:
             return JSONResponse({"ok": False, "message": "ZIP ichida data.yaml topilmadi."}, status_code=400)
 
-        if CUSTOM_DATASET_DIR.exists():
-            shutil.rmtree(CUSTOM_DATASET_DIR)
         CUSTOM_DATASET_DIR.mkdir(parents=True, exist_ok=True)
+        for child in CUSTOM_DATASET_DIR.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink(missing_ok=True)
         for name in ("data.yaml", "classes.txt", "README.md"):
             src = source_root / name
             if src.exists() and src.is_file():
