@@ -2808,12 +2808,22 @@ def ai_chat(req: ChatRequest):
     if not message:
         return {"reply": "Kamera, odamlar, risk, incident yoki analytics haqida savol yozing." if uz else "Please ask something about people, risk, cameras, incidents, objects or analytics.", "source": "fallback"}
 
-    ai_reply = ask_openai_assistant(
-        original_message,
-        build_chat_context(summary_data, camera_data, df_analytics, df_incidents),
-    )
-    if ai_reply:
-        return {"reply": ai_reply, "source": "openai"}
+    operational_words = [
+        "live", "hozir", "real time", "realtime", "real-time", "odam", "odamlar", "people",
+        "camera", "kamera", "kamerada", "qaysi", "qancha", "risk", "xavf", "fps", "quality",
+        "sifat", "stream", "incident", "hodisa", "alert", "anomaly", "obyekt", "object",
+        "telefon", "phone", "noutbuk", "laptop", "transport", "vehicle", "status", "online",
+        "offline", "summary", "xulosa", "hisobot", "trend", "analytics", "statistika",
+    ]
+    should_answer_locally = text_has_any(message, operational_words) or message in {"hi", "hello", "hey", "salom", "assalomu alaykum", "salam"}
+
+    if not should_answer_locally:
+        ai_reply = ask_openai_assistant(
+            original_message,
+            build_chat_context(summary_data, camera_data, df_analytics, df_incidents),
+        )
+        if ai_reply:
+            return {"reply": ai_reply, "source": "openai"}
 
     if message in {"hi", "hello", "hey", "salom", "assalomu alaykum", "salam"}:
         return {
