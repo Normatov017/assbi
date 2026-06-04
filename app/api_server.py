@@ -484,6 +484,62 @@ def resolve_detection_model(model_id: str) -> str:
     return "yolov8n.pt"
 
 
+def auto_split_yolo_dataset(dataset_dir: Path = CUSTOM_DATASET_DIR) -> dict[str, Any]:
+    train_images_dir = dataset_dir / "train" / "images"
+    train_labels_dir = dataset_dir / "train" / "labels"
+    valid_images_dir = dataset_dir / "valid" / "images"
+    valid_labels_dir = dataset_dir / "valid" / "labels"
+    test_images_dir = dataset_dir / "test" / "images"
+    test_labels_dir = dataset_dir / "test" / "labels"
+
+    for folder in (train_images_dir, train_labels_dir, valid_images_dir, valid_labels_dir, test_images_dir, test_labels_dir):
+        folder.mkdir(parents=True, exist_ok=True)
+
+    valid_images = [p for p in valid_images_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}]
+    test_images = [p for p in test_images_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}]
+    train_images = sorted([p for p in train_images_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}])
+
+    if valid_images or len(train_images) < 3:
+        return {"auto_split": False, "message": "Split tayyor yoki rasm juda kam."}
+
+    labeled_images = []
+    for image_path in train_images:
+        label_path = train_labels_dir / f"{image_path.stem}.txt"
+        if label_path.exists():
+            labeled_images.append((image_path, label_path))
+
+    if len(labeled_images) < 3:
+        return {"auto_split": False, "message": "Auto split uchun labeli bor kamida 3 ta rasm kerak."}
+
+    total = len(labeled_images)
+    valid_count = max(1, round(total * 0.2))
+    test_count = max(1, round(total * 0.1)) if total >= 10 else 0
+    if total - valid_count - test_count < 1:
+        test_count = 0
+
+    moved_valid = labeled_images[-(valid_count + test_count): -test_count if test_count else None]
+    moved_test = labeled_images[-test_count:] if test_count else []
+
+    def move_pairs(pairs, image_dst, label_dst):
+        moved = 0
+        for image_path, label_path in pairs:
+            image_target = image_dst / image_path.name
+            label_target = label_dst / label_path.name
+            image_path.replace(image_target)
+            label_path.replace(label_target)
+            moved += 1
+        return moved
+
+    valid_moved = move_pairs(moved_valid, valid_images_dir, valid_labels_dir)
+    test_moved = move_pairs(moved_test, test_images_dir, test_labels_dir)
+    return {
+        "auto_split": True,
+        "message": f"Dataset auto-split qilindi: valid={valid_moved}, test={test_moved}.",
+        "valid_moved": valid_moved,
+        "test_moved": test_moved,
+    }
+
+
 def yolo_dataset_status(dataset_dir: Path = CUSTOM_DATASET_DIR) -> dict[str, Any]:
     data_yaml = dataset_dir / "data.yaml"
     splits: dict[str, dict[str, int]] = {}
@@ -1947,6 +2003,7 @@ def export_snapshot(camera_id: str):
 
 @app.get("/api/fine-tuning/status")
 def fine_tuning_status():
+    auto_split_yolo_dataset()
     settings = load_settings()
     current = str(settings.get("detection_model", "yolov8n.pt"))
     return {
@@ -1963,7 +2020,8 @@ def fine_tuning_status():
 
 @app.get("/api/fine-tuning/dataset")
 def fine_tuning_dataset_status():
-    return {"ok": True, **yolo_dataset_status()}
+    split_result = auto_split_yolo_dataset()
+    return {"ok": True, "split_result": split_result, **yolo_dataset_status()}
 
 
 @app.get("/api/fine-tuning/dataset/template")
@@ -2163,9 +2221,13 @@ async def upload_fine_tuning_dataset(request: Request, dataset: UploadFile = Fil
                     if src.is_file() and not src.name.startswith("._") and src.parent.name != "__MACOSX":
                         (dst_dir / src.name).write_bytes(src.read_bytes())
 
+        split_result = auto_split_yolo_dataset()
         status = yolo_dataset_status()
-        audit_event(request, "fine_tuning.dataset_upload", f"file={filename}; images={status['total_images']}")
-        return {"ok": True, "message": "Dataset yuklandi.", **status}
+        audit_event(request, "fine_tuning.dataset_upload", f"file={filename}; images={status['total_images']}; split={split_result}")
+        message = "Dataset yuklandi."
+        if split_result.get("auto_split"):
+            message += " " + str(split_result.get("message", ""))
+        return {"ok": True, "message": message, "split_result": split_result, **status}
     finally:
         try:
             upload_path.unlink(missing_ok=True)
