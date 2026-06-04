@@ -2084,16 +2084,28 @@ async def upload_fine_tuning_dataset(request: Request, dataset: UploadFile = Fil
                     return JSONResponse({"ok": False, "message": "ZIP ichida xavfsiz bo‘lmagan path bor."}, status_code=400)
             archive.extractall(tmp_dir)
 
-        candidates = [tmp_dir]
-        candidates.extend([p for p in tmp_dir.iterdir() if p.is_dir()])
-        source_root = next((p for p in candidates if (p / "data.yaml").exists()), None)
+        data_yaml_candidates = [
+            path
+            for path in tmp_dir.rglob("data.yaml")
+            if "__MACOSX" not in path.parts and not any(part.startswith("._") for part in path.parts)
+        ]
+        source_root = next(
+            (
+                path.parent
+                for path in data_yaml_candidates
+                if (path.parent / "train").exists() or (path.parent / "valid").exists() or (path.parent / "test").exists()
+            ),
+            data_yaml_candidates[0].parent if data_yaml_candidates else None,
+        )
         if source_root is None:
             return JSONResponse({"ok": False, "message": "ZIP ichida data.yaml topilmadi."}, status_code=400)
 
+        if CUSTOM_DATASET_DIR.exists():
+            shutil.rmtree(CUSTOM_DATASET_DIR)
         CUSTOM_DATASET_DIR.mkdir(parents=True, exist_ok=True)
         for name in ("data.yaml", "classes.txt", "README.md"):
             src = source_root / name
-            if src.exists():
+            if src.exists() and src.is_file():
                 (CUSTOM_DATASET_DIR / name).write_bytes(src.read_bytes())
         for split in ("train", "valid", "test"):
             for kind in ("images", "labels"):
@@ -2103,7 +2115,7 @@ async def upload_fine_tuning_dataset(request: Request, dataset: UploadFile = Fil
                 if not src_dir.exists():
                     continue
                 for src in src_dir.iterdir():
-                    if src.is_file():
+                    if src.is_file() and not src.name.startswith("._") and src.parent.name != "__MACOSX":
                         (dst_dir / src.name).write_bytes(src.read_bytes())
 
         status = yolo_dataset_status()
