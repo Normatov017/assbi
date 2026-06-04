@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -50,7 +50,6 @@ type RoleType = "admin" | "security" | "analyst" | "manager";
 type DemoRole = {
   value: RoleType;
   label: string;
-  email: string;
   description: string;
   icon: LucideIcon;
 };
@@ -59,39 +58,31 @@ const demoRoles: DemoRole[] = [
   {
     value: "admin",
     label: "Admin",
-    email: "admin@assbi.com",
     description: "Full platform access",
     icon: Shield,
   },
   {
     value: "security",
     label: "Security Officer",
-    email: "security@assbi.com",
     description: "Live surveillance and alerts",
     icon: Camera,
   },
   {
     value: "analyst",
     label: "BI Analyst",
-    email: "analyst@assbi.com",
     description: "Reports and analytics",
     icon: BarChart3,
   },
   {
     value: "manager",
     label: "Manager",
-    email: "manager@assbi.com",
     description: "Executive dashboard",
     icon: Users,
   },
 ];
 
-function getRoleData(role: string) {
-  return demoRoles.find((item) => item.value === role) || demoRoles[0];
-}
-
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
-  const [email, setEmail] = useState("admin@assbi.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<RoleType>("admin");
   const [rememberMe, setRememberMe] = useState(true);
@@ -99,33 +90,9 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const selectedRole = useMemo(() => getRoleData(role), [role]);
-
-  const formQuality = useMemo(() => {
-    let score = 0;
-
-    if (email.includes("@")) score += 35;
-    if (password.length >= 6) score += 35;
-    if (role) score += 20;
-    if (rememberMe) score += 10;
-
-    return score;
-  }, [email, password, role, rememberMe]);
-
   function handleRoleChange(value: string) {
     const nextRole = value as RoleType;
-    const roleData = getRoleData(nextRole);
-
     setRole(nextRole);
-    setEmail(roleData.email);
-    setError("");
-  }
-
-  function fillDemo(roleValue: RoleType) {
-    const roleData = getRoleData(roleValue);
-
-    setRole(roleData.value);
-    setEmail(roleData.email);
     setError("");
   }
 
@@ -196,8 +163,8 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       <div className="absolute -top-32 -left-32 size-96 rounded-full bg-blue-500/20 blur-3xl" />
       <div className="absolute -bottom-32 -right-32 size-96 rounded-full bg-purple-500/20 blur-3xl" />
 
-      <div className="relative z-10 min-h-screen grid grid-cols-1 xl:grid-cols-12">
-        <div className="hidden xl:flex xl:col-span-7 flex-col justify-between p-10 2xl:p-14">
+      <div className="relative z-10 h-screen grid grid-cols-1 xl:grid-cols-12">
+        <div className="hidden xl:flex xl:col-span-7 flex-col justify-between p-8 2xl:p-10">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg shadow-blue-500/25">
               <Shield className="size-7 text-white" />
@@ -213,24 +180,24 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             </div>
           </div>
 
-          <div className="max-w-3xl space-y-8">
-            <div className="space-y-5">
+          <div className="max-w-3xl space-y-6">
+            <div className="space-y-4">
               <Badge className="bg-green-500/15 text-green-400 border border-green-500/25">
                 <Wifi className="size-3.5 mr-1" />
                 Secure Monitoring Workspace
               </Badge>
 
-              <h2 className="text-5xl 2xl:text-6xl font-semibold tracking-tight text-white leading-tight">
+              <h2 className="text-4xl 2xl:text-5xl font-semibold tracking-tight text-white leading-tight max-w-3xl">
                 Enterprise AI surveillance dashboard for real-time decisions.
               </h2>
 
-              <p className="text-lg text-white/65 max-w-2xl">
+              <p className="text-base text-white/65 max-w-2xl">
                 Monitor cameras, detect objects, analyze risk, track people flow
                 and generate BI reports from one secure platform.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 max-w-2xl">
+            <div className="grid grid-cols-2 gap-3 max-w-2xl">
               <FeatureCard
                 icon={Camera}
                 title="Live Monitoring"
@@ -257,7 +224,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4 max-w-3xl">
+          <div className="grid grid-cols-4 gap-3 max-w-3xl">
             <MiniStatus icon={Activity} label="System" value="Operational" />
             <MiniStatus icon={MonitorDot} label="Mode" value="24/7 Live" />
             <MiniStatus icon={Zap} label="AI Engine" value="Ready" />
@@ -265,8 +232,8 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           </div>
         </div>
 
-        <div className="xl:col-span-5 min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-10">
-          <div className="w-full max-w-[520px] space-y-5">
+        <div className="xl:col-span-5 h-screen flex items-center justify-center p-4 sm:p-5 lg:p-8">
+          <div className="w-full max-w-[500px]">
             <div className="xl:hidden text-center space-y-3 mb-6">
               <div className="mx-auto w-fit p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg shadow-blue-500/25">
                 <Shield className="size-8 text-white" />
@@ -281,19 +248,19 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             </div>
 
             <Card className="backdrop-blur-2xl bg-card/70 border-white/10 shadow-2xl shadow-black/30">
-              <CardHeader className="space-y-4">
+              <CardHeader className="space-y-3 pb-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <CardTitle className="text-3xl bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                    <CardTitle className="text-2xl bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
                       Welcome Back
                     </CardTitle>
-                    <CardDescription className="text-base mt-2">
+                    <CardDescription className="text-sm mt-1">
                       Sign in to access your security command center.
                     </CardDescription>
                   </div>
 
-                  <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20">
-                    <Lock className="size-6 text-blue-500" />
+                  <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                    <Lock className="size-5 text-blue-500" />
                   </div>
                 </div>
 
@@ -304,8 +271,8 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                 </div>
               </CardHeader>
 
-              <CardContent>
-                <form onSubmit={handleLogin} className="space-y-5">
+              <CardContent className="pt-0">
+                <form onSubmit={handleLogin} className="space-y-4">
                   {error && (
                     <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-3 flex items-start gap-3">
                       <AlertTriangle className="size-5 text-red-500 mt-0.5" />
@@ -319,10 +286,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                     </Label>
 
                     <Select value={role} onValueChange={handleRoleChange}>
-                      <SelectTrigger
-                        id="role"
-                        className="bg-background/50 border-border/50 h-11"
-                      >
+                      <SelectTrigger id="role" className="bg-background/50 border-border/50 h-10">
                         <SelectValue />
                       </SelectTrigger>
 
@@ -336,24 +300,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                     </Select>
                   </div>
 
-                  <div className="rounded-2xl border border-border/50 bg-muted/20 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                        <selectedRole.icon className="size-5 text-blue-500" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="font-semibold">{selectedRole.label}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {selectedRole.description}
-                        </p>
-                      </div>
-
-                      <Badge className="ml-auto bg-green-500/10 text-green-500 border border-green-500/20">
-                        Secure
-                      </Badge>
-                    </div>
-                  </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-foreground/90">
@@ -366,10 +312,10 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                       <Input
                         id="email"
                         type="email"
-                        placeholder="admin@assbi.com"
+                        placeholder="Email address"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10 bg-background/50 border-border/50 h-11"
+                        className="pl-10 bg-background/50 border-border/50 h-10"
                         autoComplete="email"
                         required
                       />
@@ -390,7 +336,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10 pr-10 bg-background/50 border-border/50 h-11"
+                        className="pl-10 pr-10 bg-background/50 border-border/50 h-10"
                         autoComplete="current-password"
                         required
                       />
@@ -428,24 +374,10 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                     </button>
                   </div>
 
-                  <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                      <span>Login readiness</span>
-                      <span>{formQuality}%</span>
-                    </div>
-
-                    <div className="h-2 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-blue-500 transition-all"
-                        style={{ width: `${formQuality}%` }}
-                      />
-                    </div>
-                  </div>
-
                   <Button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full h-11 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/20"
+                    className="w-full h-10 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/20"
                     size="lg"
                   >
                     {isLoading ? (
@@ -461,31 +393,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                     )}
                   </Button>
 
-                  <div className="grid grid-cols-2 gap-3 pt-1">
-                    {demoRoles.map((item) => {
-                      const Icon = item.icon;
-                      const active = role === item.value;
-
-                      return (
-                        <button
-                          type="button"
-                          key={item.value}
-                          onClick={() => fillDemo(item.value)}
-                          className={`rounded-xl border p-3 text-left transition ${
-                            active
-                              ? "border-blue-500 bg-blue-500/10"
-                              : "border-border/50 bg-muted/20 hover:border-blue-500/50"
-                          }`}
-                        >
-                          <Icon className="size-4 text-blue-500 mb-2" />
-                          <p className="text-xs font-medium">{item.label}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">
-                            {item.email}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
 
                   <div className="flex items-center justify-between text-xs text-muted-foreground pt-2">
                     <span>Secured by AI-powered authentication</span>
@@ -494,22 +401,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                 </form>
               </CardContent>
             </Card>
-
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-4">
-              <div className="flex items-start gap-3">
-                <Sparkles className="size-5 text-cyan-400 mt-0.5" />
-
-                <div>
-                  <p className="text-sm font-medium text-white">
-                    Authorized access only
-                  </p>
-                  <p className="text-xs text-white/55 mt-1">
-                    Select a role to fill the email, then enter the assigned
-                    password to open the dashboard.
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -531,8 +422,8 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-5">
-      <Icon className="size-6 text-blue-400 mb-4" />
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4">
+      <Icon className="size-5 text-blue-400 mb-3" />
       <h3 className="font-semibold text-white">{title}</h3>
       <p className="text-sm text-white/55 mt-1">{description}</p>
     </div>
@@ -549,8 +440,8 @@ function MiniStatus({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4">
-      <Icon className="size-5 text-green-400 mb-3" />
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-3">
+      <Icon className="size-4 text-green-400 mb-2" />
       <p className="text-xs text-white/45">{label}</p>
       <p className="text-sm font-semibold text-white">{value}</p>
     </div>
