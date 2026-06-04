@@ -787,9 +787,9 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     if lightweight:
         cmd = base_cmd(detector_path)
         if is_rtsp_source(url):
-            cmd.extend(["--width", "960", "--height", "540", "--interval", "0.05", "--crop-top-ratio", "0.20"])
+            cmd.extend(["--width", "640", "--height", "360", "--interval", "0.05", "--crop-top-ratio", "0.20"])
         else:
-            cmd.extend(["--interval", "0.08"])
+            cmd.extend(["--width", "640", "--height", "360", "--interval", "0.06" if speed_mode == "fast" else "0.08"])
         RUNNING_PROCESSES[camera_id] = spawn(cmd, "grabber")
         return True
 
@@ -799,9 +799,9 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     if live_source and grabber_path.exists():
         grabber_cmd = base_cmd(grabber_path)
         if is_rtsp_source(url):
-            grabber_cmd.extend(["--width", "960", "--height", "540", "--interval", "0.05", "--crop-top-ratio", "0.20"])
+            grabber_cmd.extend(["--width", "640", "--height", "360", "--interval", "0.05", "--crop-top-ratio", "0.20"])
         else:
-            grabber_cmd.extend(["--width", "640", "--height", "360", "--interval", "0.08"])
+            grabber_cmd.extend(["--width", "640", "--height", "360", "--interval", "0.06" if speed_mode == "fast" else "0.08"])
         processes.append(spawn(grabber_cmd, "grabber"))
 
     cmd = base_cmd(BASE_DIR / "app" / "main_detector.py")
@@ -809,11 +809,11 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
 
     if is_rtsp_source(url):
         cmd.extend([
-            "--width", "960",
-            "--height", "540",
-            "--imgsz", "768",
+            "--width", "640",
+            "--height", "360",
+            "--imgsz", "640",
             "--conf", "0.07",
-            "--detect-every", "8",
+            "--detect-every", "4" if speed_mode == "fast" else "6",
             "--log-every", "1",
             "--crop-top-ratio", "0.20",
             "--no-frame-output",
@@ -821,7 +821,13 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     elif is_local_video(url):
         cmd.extend(["--detect-every", "3", "--log-every", "5"])
     else:
-        cmd.extend(["--fast-mode", "--detect-every", "8", "--log-every", "1", "--no-frame-output"])
+        cmd.extend([
+            "--fast-mode",
+            "--imgsz", "640",
+            "--detect-every", "4" if speed_mode == "fast" else "6",
+            "--log-every", "1",
+            "--no-frame-output",
+        ])
 
     processes.append(spawn(cmd, "detector"))
     RUNNING_PROCESSES[camera_id] = processes if len(processes) > 1 else processes[0]
