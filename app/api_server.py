@@ -50,6 +50,7 @@ SETTINGS_FILE = STREAMS_DIR / "settings.json"
 MODELS_DIR = BASE_DIR / "models"
 TRAINING_DIR = BASE_DIR / "training"
 TEST_OUTPUT_DIR = EXPORTS_DIR / "fine_tuning_tests"
+FRAME_STALE_SECONDS = 30
 
 FRAMES_DIR.mkdir(exist_ok=True)
 STREAMS_DIR.mkdir(exist_ok=True)
@@ -573,6 +574,15 @@ def current_day_df(df: pd.DataFrame) -> pd.DataFrame:
     return work
 
 
+def frame_is_fresh(frame_path: Path, max_age_seconds: int = FRAME_STALE_SECONDS) -> bool:
+    if not frame_path.exists():
+        return False
+    try:
+        return time.time() - frame_path.stat().st_mtime <= max_age_seconds
+    except OSError:
+        return False
+
+
 def is_recent_camera_row(row: dict[str, Any], max_age_seconds: int = 15) -> bool:
     timestamp = safe_str(row.get("timestamp", ""))
     if not timestamp:
@@ -809,8 +819,8 @@ def build_cameras_response(
         process = RUNNING_PROCESSES.get(cam_id)
         running = processes_alive(process) or is_recent_camera_row(latest)
         frame_path = FRAMES_DIR / f"{cam_id}.jpg"
-        has_frame = frame_path.exists()
-        frame_updated_at = datetime.fromtimestamp(frame_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S") if has_frame else ""
+        has_frame = frame_is_fresh(frame_path)
+        frame_updated_at = datetime.fromtimestamp(frame_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S") if frame_path.exists() else ""
 
         result.append(
             {
@@ -1687,8 +1697,8 @@ def delete_camera(camera_id: str, request: Request):
 @app.get("/api/frame/{camera_id}")
 def camera_frame(camera_id: str):
     frame_path = FRAMES_DIR / f"{camera_id}.jpg"
-    if not frame_path.exists():
-        return JSONResponse({"ok": False, "message": "No frame available yet"}, status_code=404)
+    if not frame_is_fresh(frame_path):
+        return JSONResponse({"ok": False, "message": "No fresh frame available"}, status_code=404)
 
     return FileResponse(frame_path, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
@@ -1729,8 +1739,8 @@ def stream_camera(camera_id: str):
 @app.get("/api/cameras/{camera_id}/snapshot")
 def export_snapshot(camera_id: str):
     frame_path = FRAMES_DIR / f"{camera_id}.jpg"
-    if not frame_path.exists():
-        return JSONResponse({"ok": False, "message": "No frame available"}, status_code=404)
+    if not frame_is_fresh(frame_path):
+        return JSONResponse({"ok": False, "message": "No fresh frame available"}, status_code=404)
 
     snapshot_dir = EXPORTS_DIR / "snapshots"
     snapshot_dir.mkdir(parents=True, exist_ok=True)
