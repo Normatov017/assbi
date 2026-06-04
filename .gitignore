@@ -19,6 +19,7 @@ frontend/dist/
 frontend/.env
 
 # Runtime data
+datasets/
 data/
 frames/
 logs/
