@@ -527,6 +527,9 @@ def save_training_status(payload: dict[str, Any]) -> dict[str, Any]:
 def refresh_training_process_status() -> dict[str, Any]:
     global FINE_TUNING_TRAIN_PROCESS
     status = load_training_status()
+    best_path = MODELS_DIR / "best.pt"
+    status["best_model"] = str(best_path)
+    status["best_model_exists"] = best_path.exists()
     proc = FINE_TUNING_TRAIN_PROCESS
     if proc and proc.poll() is None:
         status.update({"running": True, "state": "running"})
@@ -534,7 +537,6 @@ def refresh_training_process_status() -> dict[str, Any]:
     if proc and proc.poll() is not None:
         code = proc.returncode
         FINE_TUNING_TRAIN_PROCESS = None
-        best_path = MODELS_DIR / "best.pt"
         status = save_training_status(
             {
                 "running": False,
@@ -1876,6 +1878,27 @@ def fine_tuning_dataset_status():
     return {"ok": True, **yolo_dataset_status()}
 
 
+@app.get("/api/fine-tuning/dataset/template")
+def download_fine_tuning_dataset_template():
+    template_path = EXPORTS_DIR / "assbi_yolo_dataset_template.zip"
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(template_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "data.yaml",
+            "path: .\ntrain: train/images\nval: valid/images\ntest: test/images\nnames:\n  0: person\n  1: vehicle\n  2: object\n",
+        )
+        archive.writestr("classes.txt", "person\nvehicle\nobject\n")
+        archive.writestr("README.md", "ASSBI YOLO dataset template. Replace .gitkeep with real images and labels.\n")
+        for split in ("train", "valid", "test"):
+            archive.writestr(f"{split}/images/.gitkeep", "")
+            archive.writestr(f"{split}/labels/.gitkeep", "")
+    return FileResponse(
+        template_path,
+        filename="assbi_yolo_dataset_template.zip",
+        media_type="application/zip",
+    )
+
+
 @app.post("/api/fine-tuning/dataset/upload")
 async def upload_fine_tuning_dataset(request: Request, dataset: UploadFile = File(...)):
     filename = Path(dataset.filename or "dataset.zip").name
@@ -1940,6 +1963,18 @@ def fine_tuning_train_status():
         **status,
         "log_tail": tail_file(TRAINING_LOG_FILE),
     }
+
+
+@app.get("/api/fine-tuning/model/best")
+def download_best_fine_tuned_model():
+    best_path = MODELS_DIR / "best.pt"
+    if not best_path.exists():
+        return JSONResponse({"ok": False, "message": "best.pt hali tayyor emas. Avval trainingni tugating."}, status_code=404)
+    return FileResponse(
+        best_path,
+        filename="best.pt",
+        media_type="application/octet-stream",
+    )
 
 
 @app.post("/api/fine-tuning/train")

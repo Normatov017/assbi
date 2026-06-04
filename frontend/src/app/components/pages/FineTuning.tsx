@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, CheckCircle2, Cpu, FolderOpen, ImageUp, Play, RefreshCw, Terminal, Upload, Zap } from "lucide-react";
+import { BrainCircuit, CheckCircle2, Cpu, Download, FolderOpen, ImageUp, Play, RefreshCw, Terminal, Upload, Zap } from "lucide-react";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -186,6 +186,14 @@ export default function FineTuning() {
     }
   }
 
+  function downloadDatasetTemplate() {
+    window.open(`${API}/api/fine-tuning/dataset/template`, "_blank");
+  }
+
+  function downloadBestModel() {
+    window.open(`${API}/api/fine-tuning/model/best`, "_blank");
+  }
+
   async function startTraining() {
     try {
       setStartingTraining(true);
@@ -345,9 +353,15 @@ export default function FineTuning() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="font-medium">Dataset ZIP upload</p>
-                <p className="mt-1 text-xs text-muted-foreground">ZIP ichida <span className="font-mono">data.yaml</span>, <span className="font-mono">train/valid/test/images</span> va <span className="font-mono">labels</span> papkalari bo‘lsin.</p>
+                <p className="mt-1 text-xs text-muted-foreground">ZIP ichida <span className="font-mono">data.yaml</span>, <span className="font-mono">train/valid/test/images</span> va <span className="font-mono">labels</span> papkalari bo‘lsin. Count shu ZIP yuklangandan keyin 0 dan haqiqiy songa o‘zgaradi.</p>
               </div>
-              <Input className="md:max-w-sm" type="file" accept=".zip" disabled={uploadingDataset || Boolean(trainingState?.running)} onChange={(event) => uploadDataset(event.target.files?.[0])} />
+              <div className="flex flex-col gap-2 md:min-w-80">
+                <Input type="file" accept=".zip" disabled={uploadingDataset || Boolean(trainingState?.running)} onChange={(event) => uploadDataset(event.target.files?.[0])} />
+                <Button type="button" variant="outline" onClick={downloadDatasetTemplate}>
+                  <Download className="mr-2 size-4" />
+                  Dataset template ZIP
+                </Button>
+              </div>
             </div>
             {uploadingDataset ? <p className="mt-2 text-sm text-muted-foreground">Dataset yuklanmoqda...</p> : null}
           </div>
@@ -382,10 +396,14 @@ export default function FineTuning() {
               <div className="text-sm text-muted-foreground">
                 Training API qayerda ishlayotgan bo‘lsa, o‘sha machine’da yuradi. Tugaganda <span className="font-mono">models/best.pt</span> chiqadi.
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={loadTrainingStatus}>
                   <RefreshCw className="mr-2 size-4" />
                   Status
+                </Button>
+                <Button variant="outline" onClick={downloadBestModel} disabled={!trainingState?.best_model_exists}>
+                  <Download className="mr-2 size-4" />
+                  best.pt yuklab olish
                 </Button>
                 <Button onClick={startTraining} disabled={startingTraining || Boolean(trainingState?.running) || !dataset?.ready}>
                   <Play className="mr-2 size-4" />
@@ -444,10 +462,18 @@ export default function FineTuning() {
                     <p className="mt-1 truncate text-xs text-muted-foreground">{model.path}</p>
                     {model.size_mb ? <p className="mt-1 text-xs text-muted-foreground">{model.size_mb} MB · {model.updated_at}</p> : null}
                   </div>
-                  <Button size="sm" variant={active ? "outline" : "default"} disabled={active || savingModel === model.id} onClick={() => selectModel(model.id)}>
-                    {active ? <CheckCircle2 className="mr-2 size-4" /> : <Zap className="mr-2 size-4" />}
-                    {active ? "Tanlangan" : "Tanlash"}
-                  </Button>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {model.id === "best.pt" ? (
+                      <Button size="sm" variant="outline" onClick={downloadBestModel}>
+                        <Download className="mr-2 size-4" />
+                        Yuklab olish
+                      </Button>
+                    ) : null}
+                    <Button size="sm" variant={active ? "outline" : "default"} disabled={active || savingModel === model.id} onClick={() => selectModel(model.id)}>
+                      {active ? <CheckCircle2 className="mr-2 size-4" /> : <Zap className="mr-2 size-4" />}
+                      {active ? "Tanlangan" : "Tanlash"}
+                    </Button>
+                  </div>
                 </div>
               );
             })}
