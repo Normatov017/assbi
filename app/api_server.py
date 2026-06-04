@@ -576,6 +576,23 @@ def collection_image_count() -> int:
     return len([p for p in COLLECTION_IMAGES_DIR.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}])
 
 
+def resolve_collection_source(source: str) -> tuple[str, str]:
+    clean = str(source or "").strip()
+    if not clean:
+        return clean, ""
+
+    lowered = clean.lower()
+    if "youtube.com" in lowered or "youtu.be" in lowered:
+        for camera in load_cameras():
+            camera_url = str(camera.get("url") or "").strip()
+            camera_id = str(camera.get("camera_id") or "").strip()
+            if camera_id and camera_url == clean:
+                frame_path = FRAMES_DIR / f"{camera_id}.jpg"
+                return str(frame_path), f"YouTube link projectdagi {camera_id} kameraga ulangan. Rasm YouTube'dan emas, tayyor frame fayldan yig'iladi: {frame_path}"
+
+    return clean, ""
+
+
 def load_collection_status() -> dict[str, Any]:
     return load_json_file(
         COLLECTION_STATUS_FILE,
@@ -1970,6 +1987,29 @@ def download_fine_tuning_dataset_template():
     )
 
 
+@app.get("/api/fine-tuning/dataset/download")
+def download_current_fine_tuning_dataset():
+    status = yolo_dataset_status()
+    if not status.get("data_yaml_exists"):
+        return JSONResponse({"ok": False, "message": "Dataset hali tayyor emas: data.yaml topilmadi."}, status_code=404)
+
+    zip_path = EXPORTS_DIR / "assbi_current_yolo_dataset.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name in ("data.yaml", "classes.txt", "README.md"):
+            path = CUSTOM_DATASET_DIR / name
+            if path.exists() and path.is_file():
+                archive.write(path, name)
+        for split in ("train", "valid", "test"):
+            for kind in ("images", "labels"):
+                folder = CUSTOM_DATASET_DIR / split / kind
+                if not folder.exists():
+                    continue
+                for path in sorted(folder.iterdir()):
+                    if path.is_file() and not path.name.startswith("._"):
+                        archive.write(path, f"{split}/{kind}/{path.name}")
+    return FileResponse(zip_path, filename="assbi_current_yolo_dataset.zip", media_type="application/zip")
+
+
 @app.get("/api/fine-tuning/collect/status")
 def fine_tuning_collect_status():
     status = refresh_collection_process_status()
@@ -1986,6 +2026,7 @@ def start_fine_tuning_collection(payload: ImageCollectionPayload, request: Reque
     source = str(payload.source or "").strip()
     if not source:
         return JSONResponse({"ok": False, "message": "Source link kiriting."}, status_code=400)
+    collection_source, source_note = resolve_collection_source(source)
 
     count = max(1, min(int(payload.count), 2000))
     interval = max(0.1, min(float(payload.interval), 10.0))
@@ -2000,7 +2041,7 @@ def start_fine_tuning_collection(payload: ImageCollectionPayload, request: Reque
         sys.executable,
         str(BASE_DIR / "scripts" / "collect_images.py"),
         "--source",
-        source,
+        collection_source,
         "--count",
         str(count),
         "--interval",
@@ -2029,8 +2070,9 @@ def start_fine_tuning_collection(payload: ImageCollectionPayload, request: Reque
         {
             "running": True,
             "state": "running",
-            "message": f"{count} ta image yig'ish boshlandi.",
+            "message": source_note or f"{count} ta image yig'ish boshlandi.",
             "source": source,
+            "resolved_source": collection_source,
             "target_count": count,
             "interval": interval,
             "prefix": prefix,
@@ -2038,7 +2080,7 @@ def start_fine_tuning_collection(payload: ImageCollectionPayload, request: Reque
             "log_file": str(COLLECTION_LOG_FILE),
         }
     )
-    audit_event(request, "fine_tuning.collect_start", f"count={count}; source={source}")
+    audit_event(request, "fine_tuning.collect_start", f"count={count}; source={source}; resolved={collection_source}")
     return {"ok": True, **status}
 
 

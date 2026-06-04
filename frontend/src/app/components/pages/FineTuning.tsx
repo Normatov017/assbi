@@ -211,6 +211,10 @@ export default function FineTuning() {
     window.open(`${API}/api/fine-tuning/dataset/template`, "_blank");
   }
 
+  function downloadCurrentDataset() {
+    window.open(`${API}/api/fine-tuning/dataset/download`, "_blank");
+  }
+
   function downloadBestModel() {
     window.open(`${API}/api/fine-tuning/model/best`, "_blank");
   }
@@ -428,6 +432,7 @@ export default function FineTuning() {
               <div className="space-y-2">
                 <p className="font-medium">1-qadam: linkdan raw rasmlar yig'ish</p>
                 <Input value={collectionSource} onChange={(event) => setCollectionSource(event.target.value)} placeholder="YouTube, RTSP yoki https://normatov.uz/api/frame/CAMERA_ID" />
+                <p className="text-xs text-muted-foreground">YouTube link projectdagi kamera bilan bir xil bo‘lsa, sistema avtomatik tayyor frame’dan yig‘adi.</p>
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground">Count</p>
@@ -471,6 +476,10 @@ export default function FineTuning() {
                 <Button type="button" variant="outline" onClick={downloadDatasetTemplate}>
                   <Download className="mr-2 size-4" />
                   Dataset template ZIP
+                </Button>
+                <Button type="button" variant="outline" onClick={downloadCurrentDataset} disabled={!dataset?.data_yaml_exists}>
+                  <Download className="mr-2 size-4" />
+                  Project dataset ZIP
                 </Button>
               </div>
             </div>
