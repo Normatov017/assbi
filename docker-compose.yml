@@ -7,6 +7,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        REQUIREMENTS_FILE: requirements-detector.txt
+        ASSBI_LIGHTWEIGHT_DETECTOR: "0"
     restart: unless-stopped
     depends_on:
       - bgutil-provider

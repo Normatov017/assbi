@@ -15,3 +15,6 @@ exports/
 *.pt
 *.onnx
 *.engine
+
+!datasets/custom_assbi_yolo/
+!datasets/custom_assbi_yolo/**

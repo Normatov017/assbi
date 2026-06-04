@@ -49,6 +49,9 @@ CAMERAS_FILE = STREAMS_DIR / "cameras.json"
 SETTINGS_FILE = STREAMS_DIR / "settings.json"
 MODELS_DIR = BASE_DIR / "models"
 TRAINING_DIR = BASE_DIR / "training"
+CUSTOM_DATASET_DIR = BASE_DIR / "datasets" / "custom_assbi_yolo"
+TRAINING_STATUS_FILE = TRAINING_DIR / "ui_training_status.json"
+TRAINING_LOG_FILE = LOGS_DIR / "fine_tuning_train.log"
 TEST_OUTPUT_DIR = EXPORTS_DIR / "fine_tuning_tests"
 FRAME_STALE_SECONDS = 30
 
@@ -74,6 +77,7 @@ app.add_middleware(
 RUNNING_PROCESSES: dict[str, Any] = {}
 LAST_INGEST_FRAME_AT: dict[str, float] = {}
 LAST_INGEST_ANALYTICS_AT: dict[str, float] = {}
+FINE_TUNING_TRAIN_PROCESS: Optional[subprocess.Popen] = None
 
 DEFAULT_SETTINGS = {
     "max_people": 50,
@@ -119,6 +123,15 @@ class IncidentWorkflowPayload(BaseModel):
 
 class ModelSelectionPayload(BaseModel):
     model: str
+
+
+class TrainingStartPayload(BaseModel):
+    data: str = "datasets/custom_assbi_yolo/data.yaml"
+    model: str = "yolo11m.pt"
+    epochs: int = 80
+    imgsz: int = 640
+    batch: int = 8
+    name: str = "assbi_custom_person_vehicle_object"
 
 
 DEFAULT_USERS = {
@@ -455,6 +468,90 @@ def resolve_detection_model(model_id: str) -> str:
     if clean in {"yolov8n.pt", "yolov8s.pt"}:
         return clean
     return "yolov8n.pt"
+
+
+def yolo_dataset_status(dataset_dir: Path = CUSTOM_DATASET_DIR) -> dict[str, Any]:
+    data_yaml = dataset_dir / "data.yaml"
+    splits: dict[str, dict[str, int]] = {}
+    total_images = 0
+    total_labels = 0
+    for split in ("train", "valid", "test"):
+        image_dir = dataset_dir / split / "images"
+        label_dir = dataset_dir / split / "labels"
+        images = [p for p in image_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}]
+        labels = [p for p in label_dir.glob("*.txt")]
+        splits[split] = {"images": len(images), "labels": len(labels)}
+        total_images += len(images)
+        total_labels += len(labels)
+
+    classes: list[str] = []
+    classes_path = dataset_dir / "classes.txt"
+    if classes_path.exists():
+        classes = [line.strip() for line in classes_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    return {
+        "path": str(dataset_dir),
+        "data_yaml": str(data_yaml),
+        "exists": dataset_dir.exists(),
+        "data_yaml_exists": data_yaml.exists(),
+        "classes": classes,
+        "splits": splits,
+        "total_images": total_images,
+        "total_labels": total_labels,
+        "ready": data_yaml.exists() and splits["train"]["images"] > 0 and splits["valid"]["images"] > 0,
+    }
+
+
+def load_training_status() -> dict[str, Any]:
+    return load_json_file(
+        TRAINING_STATUS_FILE,
+        {
+            "running": False,
+            "state": "idle",
+            "message": "Training hali boshlanmagan.",
+            "best_model": str(MODELS_DIR / "best.pt"),
+            "log_file": str(TRAINING_LOG_FILE),
+        },
+    )
+
+
+def save_training_status(payload: dict[str, Any]) -> dict[str, Any]:
+    current = load_training_status()
+    current.update(payload)
+    current["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_json_file(TRAINING_STATUS_FILE, current)
+    return current
+
+
+def refresh_training_process_status() -> dict[str, Any]:
+    global FINE_TUNING_TRAIN_PROCESS
+    status = load_training_status()
+    proc = FINE_TUNING_TRAIN_PROCESS
+    if proc and proc.poll() is None:
+        status.update({"running": True, "state": "running"})
+        return status
+    if proc and proc.poll() is not None:
+        code = proc.returncode
+        FINE_TUNING_TRAIN_PROCESS = None
+        best_path = MODELS_DIR / "best.pt"
+        status = save_training_status(
+            {
+                "running": False,
+                "state": "completed" if code == 0 and best_path.exists() else "failed",
+                "return_code": code,
+                "message": "Training tugadi. models/best.pt tayyor." if code == 0 and best_path.exists() else "Training tugadi, lekin best.pt topilmadi yoki xato bor. Logni tekshiring.",
+                "best_model": str(best_path),
+                "best_model_exists": best_path.exists(),
+            }
+        )
+    return status
+
+
+def tail_file(path: Path, max_lines: int = 80) -> str:
+    if not path.exists():
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[-max_lines:])
 
 
 def draw_test_detection(frame, detections):
@@ -1762,7 +1859,100 @@ def fine_tuning_status():
         "resolved_model": resolve_detection_model(current),
         "models": available_detection_models(),
         "training_dir": str(TRAINING_DIR),
+        "dataset": yolo_dataset_status(),
+        "training": refresh_training_process_status(),
     }
+
+
+@app.get("/api/fine-tuning/dataset")
+def fine_tuning_dataset_status():
+    return {"ok": True, **yolo_dataset_status()}
+
+
+@app.get("/api/fine-tuning/train/status")
+def fine_tuning_train_status():
+    status = refresh_training_process_status()
+    return {
+        "ok": True,
+        **status,
+        "log_tail": tail_file(TRAINING_LOG_FILE),
+    }
+
+
+@app.post("/api/fine-tuning/train")
+def start_fine_tuning_training(payload: TrainingStartPayload, request: Request):
+    global FINE_TUNING_TRAIN_PROCESS
+    refresh_training_process_status()
+    if FINE_TUNING_TRAIN_PROCESS and FINE_TUNING_TRAIN_PROCESS.poll() is None:
+        return JSONResponse({"ok": False, "message": "Training allaqachon ishlayapti."}, status_code=409)
+
+    dataset_status = yolo_dataset_status()
+    data_path = (BASE_DIR / payload.data).resolve() if not Path(payload.data).is_absolute() else Path(payload.data).resolve()
+    if not data_path.exists():
+        return JSONResponse({"ok": False, "message": f"data.yaml topilmadi: {data_path}"}, status_code=400)
+    if not dataset_status.get("ready"):
+        return JSONResponse({"ok": False, "message": "Dataset tayyor emas. Train va valid images/labels qo‘shing."}, status_code=400)
+
+    epochs = max(1, min(int(payload.epochs), 300))
+    imgsz = max(320, min(int(payload.imgsz), 1280))
+    batch = max(1, min(int(payload.batch), 64))
+    run_name = normalize_camera_id(payload.name or "assbi_custom_train")
+    model_name = Path(payload.model or "yolo11m.pt").name
+
+    cmd = [
+        sys.executable,
+        str(BASE_DIR / "scripts" / "train_yolo11m.py"),
+        "--data",
+        str(data_path),
+        "--model",
+        model_name,
+        "--epochs",
+        str(epochs),
+        "--imgsz",
+        str(imgsz),
+        "--batch",
+        str(batch),
+        "--name",
+        run_name,
+    ]
+
+    TRAINING_DIR.mkdir(exist_ok=True)
+    LOGS_DIR.mkdir(exist_ok=True)
+    TRAINING_LOG_FILE.write_text("", encoding="utf-8")
+    log_handle = TRAINING_LOG_FILE.open("a", encoding="utf-8")
+    log_handle.write("Running: " + " ".join(cmd) + "\n")
+    log_handle.flush()
+    try:
+        FINE_TUNING_TRAIN_PROCESS = subprocess.Popen(
+            cmd,
+            cwd=str(BASE_DIR),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except Exception as exc:
+        log_handle.close()
+        return JSONResponse({"ok": False, "message": f"Training start bo‘lmadi: {exc}"}, status_code=500)
+
+    status = save_training_status(
+        {
+            "running": True,
+            "state": "running",
+            "message": "Training boshlandi. Tugaganda models/best.pt chiqadi.",
+            "command": cmd,
+            "dataset": str(data_path),
+            "model": model_name,
+            "epochs": epochs,
+            "imgsz": imgsz,
+            "batch": batch,
+            "run_name": run_name,
+            "best_model": str(MODELS_DIR / "best.pt"),
+            "best_model_exists": (MODELS_DIR / "best.pt").exists(),
+            "log_file": str(TRAINING_LOG_FILE),
+        }
+    )
+    audit_event(request, "fine_tuning.train_start", f"model={model_name}; data={data_path}; epochs={epochs}")
+    return {"ok": True, **status}
 
 
 @app.post("/api/fine-tuning/model")

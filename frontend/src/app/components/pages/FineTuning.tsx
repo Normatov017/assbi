@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, CheckCircle2, Cpu, ImageUp, RefreshCw, Upload, Zap } from "lucide-react";
+import { BrainCircuit, CheckCircle2, Cpu, FolderOpen, ImageUp, Play, RefreshCw, Terminal, Upload, Zap } from "lucide-react";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -17,12 +17,44 @@ type DetectionModel = {
   updated_at?: string;
 };
 
+type DatasetSplitStatus = { images: number; labels: number };
+
+type DatasetStatus = {
+  path: string;
+  data_yaml: string;
+  exists: boolean;
+  data_yaml_exists: boolean;
+  classes: string[];
+  splits: Record<"train" | "valid" | "test", DatasetSplitStatus>;
+  total_images: number;
+  total_labels: number;
+  ready: boolean;
+};
+
+type TrainingStatus = {
+  running: boolean;
+  state: string;
+  message: string;
+  model?: string;
+  epochs?: number;
+  imgsz?: number;
+  batch?: number;
+  run_name?: string;
+  best_model?: string;
+  best_model_exists?: boolean;
+  log_file?: string;
+  log_tail?: string;
+  updated_at?: string;
+};
+
 type FineTuneStatus = {
   ok: boolean;
   current_model: string;
   resolved_model: string;
   models: DetectionModel[];
   training_dir: string;
+  dataset?: DatasetStatus;
+  training?: TrainingStatus;
 };
 
 type TestImageResult = {
@@ -40,6 +72,13 @@ export default function FineTuning() {
   const [uploading, setUploading] = useState(false);
   const [testingImage, setTestingImage] = useState(false);
   const [testResult, setTestResult] = useState<TestImageResult | null>(null);
+  const [training, setTraining] = useState<TrainingStatus | null>(null);
+  const [startingTraining, setStartingTraining] = useState(false);
+  const [trainModel, setTrainModel] = useState("yolo11m.pt");
+  const [trainEpochs, setTrainEpochs] = useState(80);
+  const [trainBatch, setTrainBatch] = useState(8);
+  const [trainImgSize, setTrainImgSize] = useState(640);
+  const [trainName, setTrainName] = useState("assbi_custom_person_vehicle_object");
   const [message, setMessage] = useState("");
 
   const activeModel = useMemo(
@@ -54,6 +93,7 @@ export default function FineTuning() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Fine-tuning status API error");
       setStatus(data);
+      if (data.training) setTraining(data.training);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Fine-tuning status yuklanmadi.");
     } finally {
@@ -106,6 +146,45 @@ export default function FineTuning() {
 
 
 
+  async function loadTrainingStatus() {
+    try {
+      const res = await fetch(`${API}/api/fine-tuning/train/status`, { cache: "no-store", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Training status API error");
+      setTraining(data);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Training status yuklanmadi.");
+    }
+  }
+
+  async function startTraining() {
+    try {
+      setStartingTraining(true);
+      const res = await fetch(`${API}/api/fine-tuning/train`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: "datasets/custom_assbi_yolo/data.yaml",
+          model: trainModel,
+          epochs: trainEpochs,
+          imgsz: trainImgSize,
+          batch: trainBatch,
+          name: trainName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data?.message || "Training boshlanmadi.");
+      setTraining(data);
+      setMessage("Training boshlandi. Tugaganda models/best.pt chiqadi.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Training start xatosi.");
+    } finally {
+      setStartingTraining(false);
+    }
+  }
+
+
   async function testImage(file?: File) {
     if (!file) return;
     if (!/\.(jpg|jpeg|png|webp)$/i.test(file.name)) {
@@ -138,6 +217,18 @@ export default function FineTuning() {
   useEffect(() => {
     loadStatus();
   }, []);
+
+  useEffect(() => {
+    if (!training?.running) return;
+    const timer = window.setInterval(() => {
+      loadTrainingStatus();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [training?.running]);
+
+  const dataset = status?.dataset;
+  const trainingState = training || status?.training;
+  const trainingProgress = trainingState?.state === "completed" ? 100 : trainingState?.running ? 65 : trainingState?.state === "failed" ? 15 : 0;
 
   return (
     <div className="space-y-6 p-6">
@@ -189,6 +280,105 @@ export default function FineTuning() {
           </div>
         </CardContent>
       </Card>
+
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Play className="size-4 text-green-600" />
+            UI orqali YOLO training
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-md border bg-muted/20 p-3">
+              <p className="text-xs text-muted-foreground">Dataset</p>
+              <p className="mt-1 font-medium">{dataset?.ready ? "Tayyor" : "Rasm/label kerak"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{dataset?.total_images || 0} images · {dataset?.total_labels || 0} labels</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3">
+              <p className="text-xs text-muted-foreground">Classlar</p>
+              <p className="mt-1 font-medium">{dataset?.classes?.join(", ") || "person, vehicle, object"}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3">
+              <p className="text-xs text-muted-foreground">Natija</p>
+              <p className="mt-1 break-all font-mono text-xs">{trainingState?.best_model || "models/best.pt"}</p>
+              {trainingState?.best_model_exists ? <Badge className="mt-2 bg-green-600 text-white">best.pt bor</Badge> : null}
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3">
+              <p className="text-xs text-muted-foreground">Status</p>
+              <p className="mt-1 font-medium">{trainingState?.running ? "Training ishlayapti" : trainingState?.state || "idle"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{trainingState?.updated_at || "-"}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-5">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Base model</p>
+              <Input value={trainModel} onChange={(event) => setTrainModel(event.target.value)} placeholder="yolo11m.pt" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Epochs</p>
+              <Input type="number" min={1} max={300} value={trainEpochs} onChange={(event) => setTrainEpochs(Number(event.target.value))} />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Batch</p>
+              <Input type="number" min={1} max={64} value={trainBatch} onChange={(event) => setTrainBatch(Number(event.target.value))} />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Image size</p>
+              <Input type="number" min={320} max={1280} value={trainImgSize} onChange={(event) => setTrainImgSize(Number(event.target.value))} />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Run name</p>
+              <Input value={trainName} onChange={(event) => setTrainName(event.target.value)} />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm text-muted-foreground">
+                Training API qayerda ishlayotgan bo‘lsa, o‘sha machine’da yuradi. Tugaganda <span className="font-mono">models/best.pt</span> chiqadi.
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={loadTrainingStatus}>
+                  <RefreshCw className="mr-2 size-4" />
+                  Status
+                </Button>
+                <Button onClick={startTraining} disabled={startingTraining || Boolean(trainingState?.running) || !dataset?.ready}>
+                  <Play className="mr-2 size-4" />
+                  {startingTraining ? "Boshlanmoqda..." : "Train boshlash"}
+                </Button>
+              </div>
+            </div>
+            <Progress value={trainingProgress} />
+            <p className="text-xs text-muted-foreground">{trainingState?.message || "Datasetni joylang va Train boshlash tugmasini bosing."}</p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {(["train", "valid", "test"] as const).map((split) => (
+              <div key={split} className="rounded-md border p-3 text-sm">
+                <div className="flex items-center gap-2 font-medium">
+                  <FolderOpen className="size-4 text-blue-600" />
+                  {split}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{dataset?.splits?.[split]?.images || 0} images · {dataset?.splits?.[split]?.labels || 0} labels</p>
+              </div>
+            ))}
+          </div>
+
+          {trainingState?.log_tail ? (
+            <div className="rounded-md border bg-black p-3 text-xs text-green-200">
+              <div className="mb-2 flex items-center gap-2 text-white">
+                <Terminal className="size-4" />
+                Training log
+              </div>
+              <pre className="max-h-56 overflow-auto whitespace-pre-wrap">{trainingState.log_tail}</pre>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

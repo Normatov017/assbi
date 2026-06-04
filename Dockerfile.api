@@ -21,8 +21,10 @@ COPY requirements*.txt ./
 RUN pip install -r ${REQUIREMENTS_FILE}
 
 COPY app ./app
+COPY scripts ./scripts
+COPY datasets/custom_assbi_yolo ./datasets/custom_assbi_yolo
 
-RUN mkdir -p data frames logs reports exports streams
+RUN mkdir -p data frames logs reports exports streams models training
 
 EXPOSE 8000
 
