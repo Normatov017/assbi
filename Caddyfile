@@ -1,4 +1,11 @@
 normatov.uz, www.normatov.uz {
+    @stream path /api/stream/*
+    handle @stream {
+        reverse_proxy frontend:80 {
+            flush_interval -1
+        }
+    }
+
     encode gzip zstd
     reverse_proxy frontend:80
 }

@@ -127,7 +127,7 @@ def start_camera(camera, api_url, env):
     cam_type = str(camera.get("type") or "relay").strip() or "relay"
     is_rtsp = url.lower().startswith("rtsp://")
     speed_mode = str(camera.get("speed_mode") or "normal").lower()
-    grabber_interval = "0.06" if speed_mode == "fast" else "0.08"
+    grabber_interval = "0.035" if speed_mode == "fast" else "0.05"
     grabber_width = "640"
     grabber_height = "640"
     relay_interval = "0.20" if speed_mode == "fast" else ("0.25" if is_rtsp else "0.5")

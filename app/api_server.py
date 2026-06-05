@@ -932,9 +932,9 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     if lightweight:
         cmd = base_cmd(detector_path)
         if is_rtsp_source(url):
-            cmd.extend(["--width", "640", "--height", "640", "--interval", "0.05", "--crop-top-ratio", "0.20"])
+            cmd.extend(["--width", "640", "--height", "640", "--interval", "0.04", "--crop-top-ratio", "0.20"])
         else:
-            cmd.extend(["--width", "640", "--height", "640", "--interval", "0.06" if speed_mode == "fast" else "0.08"])
+            cmd.extend(["--width", "640", "--height", "640", "--interval", "0.035" if speed_mode == "fast" else "0.05"])
         RUNNING_PROCESSES[camera_id] = spawn(cmd, "grabber")
         return True
 
@@ -944,9 +944,9 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     if live_source and grabber_path.exists():
         grabber_cmd = base_cmd(grabber_path)
         if is_rtsp_source(url):
-            grabber_cmd.extend(["--width", "640", "--height", "640", "--interval", "0.05", "--crop-top-ratio", "0.20"])
+            grabber_cmd.extend(["--width", "640", "--height", "640", "--interval", "0.04", "--crop-top-ratio", "0.20"])
         else:
-            grabber_cmd.extend(["--width", "640", "--height", "640", "--interval", "0.06" if speed_mode == "fast" else "0.08"])
+            grabber_cmd.extend(["--width", "640", "--height", "640", "--interval", "0.035" if speed_mode == "fast" else "0.05"])
         processes.append(spawn(grabber_cmd, "grabber"))
 
     cmd = base_cmd(BASE_DIR / "app" / "main_detector.py")
@@ -1976,7 +1976,7 @@ def mjpeg_generator(camera_id: str):
                     last_yield = time.time()
             except Exception:
                 pass
-        time.sleep(0.08)
+        time.sleep(0.03)
 
 
 @app.get("/api/stream/{camera_id}")
