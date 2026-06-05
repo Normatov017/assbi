@@ -132,7 +132,7 @@ def start_camera(camera, api_url, env):
     grabber_height = "640"
     relay_interval = "0.20" if speed_mode == "fast" else ("0.25" if is_rtsp else "0.5")
     detect_every = "2" if speed_mode == "fast" else "3"
-    detector_imgsz = "640"
+    detector_imgsz = "512"
 
     cleanup_stale_files(camera_id)
 

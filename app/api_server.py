@@ -956,7 +956,7 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
         cmd.extend([
             "--width", "640",
             "--height", "640",
-            "--imgsz", "640",
+            "--imgsz", "512",
             "--conf", "0.04",
             "--detect-every", "2" if speed_mode == "fast" else "3",
             "--log-every", "1",
@@ -965,11 +965,11 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
             str(FRAMES_DIR / f"{camera_id}_raw.jpg"),
         ])
     elif is_local_video(url):
-        cmd.extend(["--detect-every", "3", "--log-every", "5"])
+        cmd.extend(["--imgsz", "512", "--detect-every", "3", "--log-every", "5"])
     else:
         cmd.extend([
             "--fast-mode",
-            "--imgsz", "640",
+            "--imgsz", "512",
             "--conf", "0.04",
             "--detect-every", "2" if speed_mode == "fast" else "3",
             "--log-every", "1",
