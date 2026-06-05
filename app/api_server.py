@@ -935,7 +935,7 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
         if is_rtsp_source(url):
             cmd.extend(["--width", "640", "--height", "640", "--interval", "0.04", "--crop-top-ratio", "0.20"])
         else:
-            cmd.extend(["--width", "640", "--height", "640", "--interval", "0.035" if speed_mode == "fast" else "0.05"])
+            cmd.extend(["--width", "640", "--height", "360", "--interval", "0.035" if speed_mode == "fast" else "0.05"])
         RUNNING_PROCESSES[camera_id] = spawn(cmd, "grabber")
         return True
 
@@ -947,7 +947,7 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
         if is_rtsp_source(url):
             grabber_cmd.extend(["--width", "640", "--height", "640", "--interval", "0.04", "--crop-top-ratio", "0.20"])
         else:
-            grabber_cmd.extend(["--width", "640", "--height", "640", "--interval", "0.035" if speed_mode == "fast" else "0.05"])
+            grabber_cmd.extend(["--width", "640", "--height", "360", "--interval", "0.035" if speed_mode == "fast" else "0.05"])
         processes.append(spawn(grabber_cmd, "grabber"))
 
     cmd = base_cmd(BASE_DIR / "app" / "main_detector.py")
@@ -2047,13 +2047,15 @@ def camera_boxes(camera_id: str):
     timestamp = safe_float(payload.get("timestamp", 0))
     age = max(0.0, time.time() - timestamp) if timestamp else None
     boxes = payload.get("boxes", []) if isinstance(payload.get("boxes", []), list) else []
+    frame_width = int(safe_float(payload.get("frame_width", 640)) or 640)
+    frame_height = int(safe_float(payload.get("frame_height", 640)) or 640)
     return {
         "ok": True,
         "camera_id": camera_id,
         "timestamp": timestamp,
         "age": age,
-        "frame_width": 640,
-        "frame_height": 640,
+        "frame_width": frame_width,
+        "frame_height": frame_height,
         "boxes": boxes,
     }
 

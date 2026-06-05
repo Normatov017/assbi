@@ -88,6 +88,12 @@ type DetectionBox = {
   track_id?: number | null;
 };
 
+type DetectionFrame = {
+  boxes: DetectionBox[];
+  width: number;
+  height: number;
+};
+
 function detectionLabel(clsId: number) {
   if ([2, 3, 5, 7].includes(clsId)) return "vehicle";
   if ([24, 26, 28, 63, 67].includes(clsId)) return "object";
@@ -100,13 +106,16 @@ function detectionColor(clsId: number) {
   return "#22c55e";
 }
 
-function DetectionOverlay({ boxes }: { boxes: DetectionBox[] }) {
+function DetectionOverlay({ boxes, frameWidth, frameHeight }: { boxes: DetectionBox[]; frameWidth: number; frameHeight: number }) {
   if (!boxes.length) return null;
+
+  const width = Math.max(1, Number(frameWidth) || 640);
+  const height = Math.max(1, Number(frameHeight) || 640);
 
   return (
     <svg
       className="absolute inset-0 h-full w-full pointer-events-none"
-      viewBox="0 0 640 640"
+      viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="none"
       aria-hidden="true"
     >
@@ -434,7 +443,7 @@ export default function LiveSurveillance() {
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [sortMode, setSortMode] = useState<SortMode>("risk");
   const [streamMode, setStreamMode] = useState<StreamMode>("original");
-  const [detectionBoxes, setDetectionBoxes] = useState<DetectionBox[]>([]);
+  const [detectionFrame, setDetectionFrame] = useState<DetectionFrame>({ boxes: [], width: 640, height: 640 });
   const selectedCameraButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const loadCameras = useCallback(async (silent = false) => {
@@ -492,7 +501,7 @@ export default function LiveSurveillance() {
 
   useEffect(() => {
     if (!selectedCamera?.camera_id || streamMode !== "detection") {
-      setDetectionBoxes([]);
+      setDetectionFrame({ boxes: [], width: 640, height: 640 });
       return;
     }
 
@@ -504,10 +513,14 @@ export default function LiveSurveillance() {
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && Array.isArray(data.boxes)) {
-          setDetectionBoxes(data.boxes);
+          setDetectionFrame({
+            boxes: data.boxes,
+            width: Number(data.frame_width) || 640,
+            height: Number(data.frame_height) || 640,
+          });
         }
       } catch {
-        if (!cancelled) setDetectionBoxes([]);
+        if (!cancelled) setDetectionFrame((current) => ({ ...current, boxes: [] }));
       }
     }
 
@@ -950,7 +963,7 @@ export default function LiveSurveillance() {
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                       allowFullScreen
                     />
-                    <DetectionOverlay boxes={detectionBoxes} />
+                    <DetectionOverlay boxes={detectionFrame.boxes} frameWidth={detectionFrame.width} frameHeight={detectionFrame.height} />
                   </>
                 ) : useDetectionStream ? (
                   <img
@@ -1542,7 +1555,7 @@ export default function LiveSurveillance() {
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowFullScreen
                   />
-                  <DetectionOverlay boxes={detectionBoxes} />
+                  <DetectionOverlay boxes={detectionFrame.boxes} frameWidth={detectionFrame.width} frameHeight={detectionFrame.height} />
                 </>
               ) : useDetectionStream ? (
                 <img

@@ -229,11 +229,13 @@ def save_latest_frame(frame, camera_id):
         temp_path.replace(final_path)
 
 
-def save_latest_boxes(boxes, camera_id):
+def save_latest_boxes(boxes, camera_id, frame_w=640, frame_h=640):
     final_path = FRAMES_DIR / f"{camera_id}_boxes.json"
     temp_path = FRAMES_DIR / f"{camera_id}_boxes_{os.getpid()}_tmp.json"
     payload = {
         "timestamp": time.time(),
+        "frame_width": int(frame_w),
+        "frame_height": int(frame_h),
         "boxes": [
             {
                 "cls_id": int(item["cls_id"]),
@@ -457,7 +459,7 @@ def main():
                     })
 
             latest_boxes = filter_person_attached_objects(latest_boxes, w, h)
-            save_latest_boxes(latest_boxes, args.camera_id)
+            save_latest_boxes(latest_boxes, args.camera_id, w, h)
 
         active_tracks = {
             tid: seen_time

@@ -129,7 +129,7 @@ def start_camera(camera, api_url, env):
     speed_mode = str(camera.get("speed_mode") or "normal").lower()
     grabber_interval = "0.035" if speed_mode == "fast" else "0.05"
     grabber_width = "640"
-    grabber_height = "640"
+    grabber_height = "640" if is_rtsp else "360"
     relay_interval = "0.20" if speed_mode == "fast" else ("0.25" if is_rtsp else "0.5")
     detect_every = "2" if speed_mode == "fast" else "3"
     detector_imgsz = "512"
