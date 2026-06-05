@@ -203,13 +203,23 @@ export default function Settings() {
     window.setTimeout(() => setToast(null), 3500);
   }
 
+  async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 8000) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
   async function loadCameras() {
     try {
       setLoadingCameras(true);
 
-      const res = await fetch(`${API}/api/cameras`, {
+      const res = await fetchWithTimeout(`${API}/api/cameras`, {
         cache: "no-store",
-      });
+      }, 6000);
 
       if (!res.ok) {
         throw new Error(`Camera API error: ${res.status}`);
@@ -294,10 +304,10 @@ export default function Settings() {
         form.append("speed_mode", speedMode);
         form.append("enabled", "true");
 
-        response = await fetch(`${API}/api/cameras/upload-video`, {
+        response = await fetchWithTimeout(`${API}/api/cameras/upload-video`, {
           method: "POST",
           body: form,
-        });
+        }, 15000);
       } else {
         const payload = {
           camera_id: cameraId.trim(),
@@ -308,13 +318,13 @@ export default function Settings() {
           enabled: true,
         };
 
-        response = await fetch(`${API}/api/cameras`, {
+        response = await fetchWithTimeout(`${API}/api/cameras`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
-        });
+        }, 6000);
       }
 
       let data: any = {};
@@ -337,12 +347,16 @@ export default function Settings() {
       setType("youtube");
       setSpeedMode("normal");
 
-      await loadCameras();
+      if (Array.isArray(data.cameras)) {
+        setCameras(data.cameras);
+      } else {
+        await loadCameras();
+      }
 
-      showToast("success", "Camera muvaffaqiyatli qo‘shildi.");
+      showToast("success", data.start_queued ? "Camera qo‘shildi. Stream fon rejimida ishga tushyapti." : "Camera muvaffaqiyatli qo‘shildi.");
     } catch (err) {
       console.error("ADD CAMERA ERROR:", err);
-      showToast("error", "Backend API ishlamayapti yoki ulanishda muammo bor.");
+      showToast("error", "Backend javobi sekin yoki ulanishda muammo bor. Reload qilib ko‘ring.");
     } finally {
       setSavingCamera(false);
     }

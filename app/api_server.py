@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 import zipfile
 import urllib.error
@@ -984,6 +985,21 @@ def start_detector(camera_id: str, site: str, url: str, speed_mode: str = "norma
     return True
 
 
+def start_detector_background(camera_id: str, site: str, url: str, speed_mode: str = "normal") -> bool:
+    if not url:
+        return False
+
+    def runner() -> None:
+        try:
+            start_detector(camera_id, site, url, speed_mode)
+        except Exception as exc:
+            print(f"[ASSBI] Background detector start failed for {camera_id}: {exc}", flush=True)
+
+    thread = threading.Thread(target=runner, name=f"detector-start-{camera_id}", daemon=True)
+    thread.start()
+    return True
+
+
 def stop_detector(camera_id: str) -> bool:
     stopped = False
 
@@ -1041,28 +1057,88 @@ def camera_latest_map() -> dict[str, dict[str, Any]]:
     return latest_map
 
 
+def load_latest_camera_rows(camera_ids: list[str]) -> dict[str, dict[str, Any]]:
+    if not camera_ids or not Path(DB_PATH).exists():
+        return {}
+
+    latest_map: dict[str, dict[str, Any]] = {}
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 5000")
+        for cam_id in camera_ids:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM minute_analytics
+                WHERE camera_id=?
+                ORDER BY timestamp DESC, id DESC
+                LIMIT 1
+                """,
+                (cam_id,),
+            ).fetchone()
+            if row:
+                latest_map[cam_id] = dict(row)
+        conn.close()
+    except Exception as exc:
+        print(f"[ASSBI] load_latest_camera_rows failed: {exc}", flush=True)
+    return latest_map
+
+
+def load_today_visitors(camera_ids: list[str]) -> dict[str, int]:
+    if not camera_ids or not Path(DB_PATH).exists():
+        return {}
+
+    today = pd.Timestamp.now().strftime("%Y-%m-%d")
+    result: dict[str, int] = {}
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        conn.execute("PRAGMA busy_timeout = 5000")
+        for cam_id in camera_ids:
+            row = conn.execute(
+                """
+                SELECT MAX(total_unique_people), SUM(new_unique_people)
+                FROM minute_analytics
+                WHERE camera_id=? AND date=?
+                """,
+                (cam_id, today),
+            ).fetchone()
+            max_total = safe_int(row[0] if row else 0)
+            sum_new = safe_int(row[1] if row else 0)
+            result[cam_id] = max(max_total, sum_new)
+        conn.close()
+    except Exception as exc:
+        print(f"[ASSBI] load_today_visitors failed: {exc}", flush=True)
+    return result
+
+
 def build_cameras_response(
     camera_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    analytics_df = filter_df(read_table("minute_analytics"), camera_id, start_date, end_date)
-    latest_df = latest_by_camera(analytics_df)
-    latest_map: dict[str, dict[str, Any]] = {}
-
-    if not latest_df.empty:
-        for _, row in latest_df.iterrows():
-            latest_map[safe_str(row.get("camera_id"))] = row.to_dict()
-
-    today_df = current_day_df(read_table("minute_analytics"))
-    today_visitors_map: dict[str, int] = {}
-    if not today_df.empty and "camera_id" in today_df.columns:
-        for cam_id, group in today_df.groupby("camera_id"):
-            today_visitors_map[safe_str(cam_id)] = estimate_unique_visitors(group)
-
     config_cameras = load_cameras()
     if camera_id and camera_id != "all":
         config_cameras = [cam for cam in config_cameras if cam.get("camera_id") == camera_id]
+
+    camera_ids = [safe_str(cam.get("camera_id")) for cam in config_cameras if safe_str(cam.get("camera_id"))]
+
+    if start_date or end_date:
+        analytics_df = filter_df(read_table("minute_analytics"), camera_id, start_date, end_date)
+        latest_df = latest_by_camera(analytics_df)
+        latest_map: dict[str, dict[str, Any]] = {}
+        if not latest_df.empty:
+            for _, row in latest_df.iterrows():
+                latest_map[safe_str(row.get("camera_id"))] = row.to_dict()
+
+        today_df = current_day_df(analytics_df)
+        today_visitors_map: dict[str, int] = {}
+        if not today_df.empty and "camera_id" in today_df.columns:
+            for cam_id, group in today_df.groupby("camera_id"):
+                today_visitors_map[safe_str(cam_id)] = estimate_unique_visitors(group)
+    else:
+        latest_map = load_latest_camera_rows(camera_ids)
+        today_visitors_map = load_today_visitors(camera_ids)
 
     result = []
 
@@ -1713,16 +1789,17 @@ def add_camera(payload: CameraPayload, request: Request):
     cameras_data.append(new_camera)
     save_cameras(cameras_data)
 
-    started = False
+    start_queued = False
     if new_camera["enabled"]:
-        started = start_detector(camera_id, site, url, speed_mode)
-    audit_event(request, "camera.add", f"camera_id={camera_id}; site={site}; type={cam_type}; started={started}")
+        start_queued = start_detector_background(camera_id, site, url, speed_mode)
+    audit_event(request, "camera.add", f"camera_id={camera_id}; site={site}; type={cam_type}; start_queued={start_queued}")
 
     return {
         "ok": True,
         "camera_id": camera_id,
-        "started": started,
-        "message": "Camera saved and detector start attempted",
+        "started": False,
+        "start_queued": start_queued,
+        "message": "Camera saved. Detector is starting in the background.",
         "cameras": cameras_data,
     }
 
