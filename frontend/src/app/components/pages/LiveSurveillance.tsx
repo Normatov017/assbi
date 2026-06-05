@@ -961,7 +961,7 @@ export default function LiveSurveillance() {
                 {useSmoothDetectionOverlay ? (
                   <>
                     <iframe
-                      key={`${selectedCamera?.camera_id}-youtube-detection`}
+                      key={`${selectedCamera?.camera_id}-youtube`}
                       src={selectedYoutubeEmbedUrl}
                       title={selectedCamera?.site || selectedCamera?.camera_id}
                       className="w-full min-h-[430px] h-full max-h-[600px]"
@@ -1553,7 +1553,7 @@ export default function LiveSurveillance() {
               {useSmoothDetectionOverlay ? (
                 <>
                   <iframe
-                    key={`${selectedCamera.camera_id}-focus-youtube-detection`}
+                    key={`${selectedCamera.camera_id}-focus-youtube`}
                     src={selectedYoutubeEmbedUrl}
                     title={selectedCamera.site || selectedCamera.camera_id}
                     className="h-full w-full"
