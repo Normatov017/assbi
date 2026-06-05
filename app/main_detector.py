@@ -349,6 +349,7 @@ def main():
     frame_index = 0
     last_log = 0
     last_fps = time.time()
+    smoothed_fps = 0.0
 
     latest_boxes = []
     active_tracks = {}
@@ -401,8 +402,12 @@ def main():
         dt = datetime.now()
         timestamp = dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        fps = 1 / max(now - last_fps, 0.001)
+        instant_fps = 1 / max(now - last_fps, 0.001)
         last_fps = now
+        target_cap = 30.0 if local_source or frame_input_path else 20.0
+        instant_fps = max(0.0, min(instant_fps, target_cap))
+        smoothed_fps = instant_fps if smoothed_fps <= 0 else (smoothed_fps * 0.85 + instant_fps * 0.15)
+        fps = smoothed_fps
 
         h, w = frame.shape[:2]
         frame_index += 1

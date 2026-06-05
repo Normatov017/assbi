@@ -334,6 +334,11 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def sanitize_fps(value: Any, default: float = 0.0) -> float:
+    fps = safe_float(value, default)
+    return round(max(0.0, min(fps, 30.0)), 1)
+
+
 def safe_bool(value: Any, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
@@ -1165,7 +1170,7 @@ def build_cameras_response(
                 "today_visitors": today_visitors_map.get(cam_id, 0),
                 "daily_visitors": today_visitors_map.get(cam_id, 0),
                 "risk_score": safe_int(latest.get("risk_score", 0)),
-                "fps": round(safe_float(latest.get("fps", 0)), 1),
+                "fps": sanitize_fps(latest.get("fps", 0)),
                 "quality": round(safe_float(latest.get("data_quality_score", latest.get("quality", 0))), 1),
                 "laptops": safe_int(latest.get("laptop_count", latest.get("laptops", 0))),
                 "phones": safe_int(latest.get("phone_count", latest.get("phones", 0))),

@@ -162,6 +162,11 @@ function numberValue(value: unknown) {
   return Number(value || 0);
 }
 
+function displayFps(value: unknown) {
+  const fps = numberValue(value);
+  return Math.max(0, Math.min(fps, 30)).toFixed(1);
+}
+
 function formatNumber(value: unknown) {
   return numberValue(value).toLocaleString();
 }
@@ -648,7 +653,7 @@ export default function LiveSurveillance() {
   const selectedYoutubeEmbedUrl = getYoutubeEmbedUrl(selectedCamera);
   const selectedHasFrame = hasLiveFrame(selectedCamera);
   const canShowOriginalStream = Boolean(selectedYoutubeEmbedUrl);
-  const canShowDetectionStream = Boolean(selectedCamera?.running && selectedHasFrame && selectedStreamUrl);
+  const canShowDetectionStream = Boolean(selectedCamera?.running && selectedStreamUrl && (selectedHasFrame || selectedYoutubeEmbedUrl));
   const useDetectionStream = canShowDetectionStream && (!canShowOriginalStream || streamMode === "detection");
   const useSmoothDetectionOverlay = useDetectionStream && Boolean(selectedYoutubeEmbedUrl);
 
@@ -814,7 +819,7 @@ export default function LiveSurveillance() {
               />
               <MiniCameraStatus
                 label="FPS"
-                value={numberValue(selectedCamera?.fps).toFixed(1)}
+                value={displayFps(selectedCamera?.fps)}
                 tone="info"
               />
               <MiniCameraStatus
@@ -1008,7 +1013,7 @@ export default function LiveSurveillance() {
                       </Badge>
 
                       <Badge className="bg-black/70 text-white">
-                        FPS {numberValue(selectedCamera.fps).toFixed(1)}
+                        FPS {displayFps(selectedCamera.fps)}
                       </Badge>
 
                       <Badge className="bg-black/70 text-white">
@@ -1244,7 +1249,7 @@ export default function LiveSurveillance() {
                           <TableCell>{camera.active_people || 0}</TableCell>
                           <TableCell>{getTotalObjects(camera)}</TableCell>
                           <TableCell>
-                            {numberValue(camera.fps).toFixed(1)}
+                            {displayFps(camera.fps)}
                           </TableCell>
 
                           <TableCell>
@@ -1422,7 +1427,7 @@ export default function LiveSurveillance() {
                             />
                             <TinyMetric
                               label="FPS"
-                              value={numberValue(camera.fps).toFixed(1)}
+                              value={displayFps(camera.fps)}
                             />
                             <TinyMetric
                               label={t("common.risk")}
@@ -1485,7 +1490,7 @@ export default function LiveSurveillance() {
                 <div className="grid grid-cols-2 gap-3">
                   <MetricBox
                     label={t("live.selectedFps")}
-                    value={numberValue(selectedCamera.fps).toFixed(1)}
+                    value={displayFps(selectedCamera.fps)}
                   />
                   <MetricBox
                     label={t("live.selectedQuality")}
@@ -1585,7 +1590,7 @@ export default function LiveSurveillance() {
                 <OverlayMetric label={t("live.today")} value={formatNumber(getTodayVisitors(selectedCamera))} />
                 <OverlayMetric label={t("live.total")} value={formatNumber(selectedCamera.total_unique)} />
                 <OverlayMetric label={t("common.objects")} value={getTotalObjects(selectedCamera)} />
-                <OverlayMetric label="FPS" value={numberValue(selectedCamera.fps).toFixed(1)} />
+                <OverlayMetric label="FPS" value={displayFps(selectedCamera.fps)} />
               </div>
             </div>
           </div>
