@@ -193,7 +193,7 @@ export default function App() {
 
             <Route
               path="live"
-              element={<Navigate to="/surveillance" replace />}
+              element={<Suspense fallback={<PageLoading />}><LiveSurveillance /></Suspense>}
             />
 
             <Route
