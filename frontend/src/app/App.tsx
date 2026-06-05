@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 
 import LoginScreen from "./components/LoginScreen";
@@ -24,6 +25,70 @@ function PageLoading() {
       <div className="text-sm text-muted-foreground">Yuklanmoqda...</div>
     </div>
   );
+}
+
+type AppErrorBoundaryProps = {
+  children: ReactNode;
+};
+
+type AppErrorBoundaryState = {
+  hasError: boolean;
+};
+
+class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
+  state: AppErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("ASSBI app render error:", error);
+  }
+
+  clearSessionAndReload = () => {
+    try {
+      localStorage.removeItem("assbi_auth");
+      localStorage.removeItem("assbi_user");
+      localStorage.removeItem("assbi_token");
+      localStorage.removeItem("auth_token");
+      sessionStorage.clear();
+    } catch {
+      // ignore storage failures
+    }
+    window.location.href = "/";
+  };
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+
+    return (
+      <div className="min-h-screen w-full bg-[#070b1f] text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full rounded-2xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl">
+          <h1 className="text-2xl font-semibold">ASSBI yuklanmadi</h1>
+          <p className="mt-3 text-sm text-white/65">
+            Brauzerda eski session yoki eski bundle cache qolgan bo'lishi mumkin. Sessiyani tozalab qayta kiring.
+          </p>
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/15"
+            >
+              Qayta yuklash
+            </button>
+            <button
+              type="button"
+              onClick={this.clearSessionAndReload}
+              className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+            >
+              Sessiyani tozalash
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 }
 
 export default function App() {
@@ -106,6 +171,7 @@ export default function App() {
   }
 
   return (
+    <AppErrorBoundary>
     <div className="size-full">
       <BrowserRouter>
         <Routes>
@@ -123,6 +189,11 @@ export default function App() {
             <Route
               path="surveillance"
               element={<Suspense fallback={<PageLoading />}><LiveSurveillance /></Suspense>}
+            />
+
+            <Route
+              path="live"
+              element={<Navigate to="/surveillance" replace />}
             />
 
             <Route
@@ -178,5 +249,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </div>
+    </AppErrorBoundary>
   );
 }
