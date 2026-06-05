@@ -2033,6 +2033,31 @@ def camera_frame(camera_id: str):
     return FileResponse(frame_path, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
+@app.get("/api/boxes/{camera_id}")
+def camera_boxes(camera_id: str):
+    boxes_path = FRAMES_DIR / f"{camera_id}_boxes.json"
+    if not boxes_path.exists():
+        return {"ok": True, "camera_id": camera_id, "boxes": [], "age": None, "frame_width": 640, "frame_height": 640}
+
+    try:
+        payload = json.loads(boxes_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"ok": True, "camera_id": camera_id, "boxes": [], "age": None, "frame_width": 640, "frame_height": 640}
+
+    timestamp = safe_float(payload.get("timestamp", 0))
+    age = max(0.0, time.time() - timestamp) if timestamp else None
+    boxes = payload.get("boxes", []) if isinstance(payload.get("boxes", []), list) else []
+    return {
+        "ok": True,
+        "camera_id": camera_id,
+        "timestamp": timestamp,
+        "age": age,
+        "frame_width": 640,
+        "frame_height": 640,
+        "boxes": boxes,
+    }
+
+
 def mjpeg_generator(camera_id: str):
     frame_path = FRAMES_DIR / f"{camera_id}.jpg"
     last_mtime = 0.0

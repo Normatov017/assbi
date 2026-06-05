@@ -81,6 +81,74 @@ type CameraEvent = {
   icon: LucideIcon;
 };
 
+type DetectionBox = {
+  cls_id: number;
+  confidence: number;
+  xyxy: [number, number, number, number];
+  track_id?: number | null;
+};
+
+function detectionLabel(clsId: number) {
+  if ([2, 3, 5, 7].includes(clsId)) return "vehicle";
+  if ([24, 26, 28, 63, 67].includes(clsId)) return "object";
+  return "person";
+}
+
+function detectionColor(clsId: number) {
+  if ([2, 3, 5, 7].includes(clsId)) return "#d946ef";
+  if ([24, 26, 28, 63, 67].includes(clsId)) return "#f59e0b";
+  return "#22c55e";
+}
+
+function DetectionOverlay({ boxes }: { boxes: DetectionBox[] }) {
+  if (!boxes.length) return null;
+
+  return (
+    <svg
+      className="absolute inset-0 h-full w-full pointer-events-none"
+      viewBox="0 0 640 640"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      {boxes.map((box, index) => {
+        const [x1, y1, x2, y2] = box.xyxy;
+        const width = Math.max(1, x2 - x1);
+        const height = Math.max(1, y2 - y1);
+        const color = detectionColor(box.cls_id);
+        const label = `${detectionLabel(box.cls_id)} ${Number(box.confidence || 0).toFixed(2)}`;
+        const labelY = Math.max(18, y1 - 4);
+
+        return (
+          <g key={`${box.track_id ?? index}-${x1}-${y1}`}>
+            <rect
+              x={x1}
+              y={y1}
+              width={width}
+              height={height}
+              fill="none"
+              stroke={color}
+              strokeWidth="3"
+              vectorEffect="non-scaling-stroke"
+            />
+            <rect
+              x={x1}
+              y={labelY - 18}
+              width={Math.min(150, Math.max(82, label.length * 8))}
+              height="20"
+              rx="3"
+              fill={color}
+              opacity="0.92"
+            />
+            <text x={x1 + 5} y={labelY - 4} fontSize="14" fontWeight="700" fill="#020617">
+              {label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 function numberValue(value: unknown) {
   return Number(value || 0);
 }
@@ -366,6 +434,7 @@ export default function LiveSurveillance() {
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [sortMode, setSortMode] = useState<SortMode>("risk");
   const [streamMode, setStreamMode] = useState<StreamMode>("original");
+  const [detectionBoxes, setDetectionBoxes] = useState<DetectionBox[]>([]);
   const selectedCameraButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const loadCameras = useCallback(async (silent = false) => {
@@ -420,6 +489,36 @@ export default function LiveSurveillance() {
 
     return () => window.clearInterval(timer);
   }, [isMonitoring, loadCameras]);
+
+  useEffect(() => {
+    if (!selectedCamera?.camera_id || streamMode !== "detection") {
+      setDetectionBoxes([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadBoxes() {
+      try {
+        const res = await fetch(`${API}/api/boxes/${selectedCamera?.camera_id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.boxes)) {
+          setDetectionBoxes(data.boxes);
+        }
+      } catch {
+        if (!cancelled) setDetectionBoxes([]);
+      }
+    }
+
+    loadBoxes();
+    const timer = window.setInterval(loadBoxes, 700);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [selectedCamera?.camera_id, streamMode]);
 
   useEffect(() => {
     if (!focusOpen) return;
@@ -538,6 +637,7 @@ export default function LiveSurveillance() {
   const canShowOriginalStream = Boolean(selectedYoutubeEmbedUrl);
   const canShowDetectionStream = Boolean(selectedCamera?.running && selectedHasFrame && selectedStreamUrl);
   const useDetectionStream = canShowDetectionStream && (!canShowOriginalStream || streamMode === "detection");
+  const useSmoothDetectionOverlay = useDetectionStream && Boolean(selectedYoutubeEmbedUrl);
 
   const operatorInsight = useMemo(() => {
     if (error) {
@@ -840,7 +940,19 @@ export default function LiveSurveillance() {
               </div>
 
               <div className="relative rounded-2xl overflow-hidden border border-border/50 bg-black min-h-[430px] flex items-center justify-center">
-                {useDetectionStream ? (
+                {useSmoothDetectionOverlay ? (
+                  <>
+                    <iframe
+                      key={`${selectedCamera?.camera_id}-youtube-detection`}
+                      src={selectedYoutubeEmbedUrl}
+                      title={selectedCamera?.site || selectedCamera?.camera_id}
+                      className="w-full min-h-[430px] h-full max-h-[600px]"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                    />
+                    <DetectionOverlay boxes={detectionBoxes} />
+                  </>
+                ) : useDetectionStream ? (
                   <img
                     key={`${selectedCamera?.camera_id}-stream`}
                     src={selectedStreamUrl}
@@ -1420,7 +1532,19 @@ export default function LiveSurveillance() {
             </div>
 
             <div className="relative flex-1 min-h-0 bg-black flex items-center justify-center">
-              {useDetectionStream ? (
+              {useSmoothDetectionOverlay ? (
+                <>
+                  <iframe
+                    key={`${selectedCamera.camera_id}-focus-youtube-detection`}
+                    src={selectedYoutubeEmbedUrl}
+                    title={selectedCamera.site || selectedCamera.camera_id}
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                  <DetectionOverlay boxes={detectionBoxes} />
+                </>
+              ) : useDetectionStream ? (
                 <img
                   key={`${selectedCamera.camera_id}-focus-stream`}
                   src={`${selectedStreamUrl}&focus=1`}
