@@ -1,3 +1,7 @@
+http://51.21.170.100 {
+    reverse_proxy frontend:80
+}
+
 normatov.uz, www.normatov.uz {
     @stream path /api/stream/*
     handle @stream {
